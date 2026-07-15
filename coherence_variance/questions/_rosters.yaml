@@ -1,0 +1,9 @@
+# Named rosters: explicit, ordered question-id lists selectable via
+# `--roster <name>`. A roster pins an exact question set by id, independent of
+# tier/audience/bucket reorg — useful for run-to-run comparability. Add one as a
+# key under `rosters:` whose value is an ordered list of question ids.
+# (Files starting with "_" are not question files; the loader skips them.)
+#
+# No rosters are currently shipped; add one under `rosters:`.
+
+rosters: {}

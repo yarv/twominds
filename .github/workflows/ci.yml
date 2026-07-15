@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      # The default install is lean (no torch); CI proving it keeps the
+      # "works without torch and without API keys" claim honest.
+      - name: Install (lean by default)
+        run: uv sync
+
+      - name: Unit tests (keyless, torchless)
+        run: uv run pytest -q
+
+      # Keyless CLI smoke: --help screens render and a dry-run plans + prices
+      # without auth. Catches stale help text and import-time regressions.
+      - name: CLI smoke (keyless)
+        run: |
+          uv run python variance_experiment.py --help
+          uv run python variance_experiment.py run --help
+          uv run python variance_experiment.py generate --help
+          uv run python variance_experiment.py analyze --help
+          uv run python variance_experiment.py report --help
+          uv run coherence-variance --help
+          uv run python variance_experiment.py run --dry-run \
+            --groups values --models gpt-4.1-mini --n 3
+
+      - name: Wheel builds and carries its data files
+        run: |
+          uv build --wheel -o dist/
+          python3 - <<'EOF'
+          import glob, zipfile
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          for needle in ("cli.py", "run_meta.py", "report_assets/", "questions/"):
+              assert any(needle in n for n in names), f"missing from wheel: {needle}"
+          print("wheel ok")
+          EOF
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: pre-commit (ruff, ruff-format, hygiene hooks)
+        run: uvx pre-commit run --all-files --show-diff-on-failure

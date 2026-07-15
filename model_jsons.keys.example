@@ -1,0 +1,6 @@
+{
+  "_comment": "Schema for the gitignored model_jsons.keys at repo root. The coherence_variance/models.py resolver maps `ours/<short_name>` -> the full OpenAI fine-tune ID stored here. Despite the .keys extension this is JSON.",
+  "_usage": "Copy this file to model_jsons.keys, fill in your own fine-tune IDs, and keep it out of git. Then run them via `--models ours/<short_name>`.",
+  "my-finetune": "ft:gpt-4.1-2025-04-14:your-org:my-finetune:XXXXXXXX",
+  "my-other-finetune": "ft:gpt-4o-2024-08-06:your-org:my-other-finetune:XXXXXXXX"
+}
