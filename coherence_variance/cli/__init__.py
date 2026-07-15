@@ -8,9 +8,16 @@ from . import analyze_cmd, budget_cmd, report_cmd, run_cmd, stress_cmd  # noqa: 
 
 # --help lists commands in registration order; keep the pipeline-logical order
 # stable regardless of module import order.
-_ORDER = ("generate", "analyze", "report", "consistency", "merge", "budget", "run", "stress")
-app.registered_commands.sort(
-    key=lambda c: _ORDER.index(c.name or c.callback.__name__)
+_ORDER = (
+    "generate",
+    "analyze",
+    "report",
+    "consistency",
+    "merge",
+    "budget",
+    "run",
+    "stress",
 )
+app.registered_commands.sort(key=lambda c: _ORDER.index(c.name or c.callback.__name__))
 
 __all__ = ["app", "main"]
