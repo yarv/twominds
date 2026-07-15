@@ -37,12 +37,14 @@ def keyless(results_root, tmp_path, monkeypatch):
 
 
 def _out(result):
-    """stdout + stderr, normalized past typer's rich error boxes (box-drawing
-    chars stripped, wrapped lines rejoined) so message asserts are stable."""
+    """stdout + stderr, normalized past typer's rich error rendering (ANSI
+    codes and box-drawing stripped, wrapped lines rejoined) so message asserts
+    hold locally and on CI, which colorizes."""
     try:
         text = result.output + result.stderr
     except (AttributeError, ValueError):
         text = result.output
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
     return " ".join(re.sub(r"[│╭╮╰╯─]", " ", text).split())
 
 
