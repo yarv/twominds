@@ -1,5 +1,7 @@
 # Coherence variance
 
+[![CI](https://github.com/yarv/coherence-variance/actions/workflows/ci.yml/badge.svg)](https://github.com/yarv/coherence-variance/actions/workflows/ci.yml)
+
 **How coherent is an LLM with itself?** Ask a model the same questions N times
 at temperature 1.0. A cross-sample LLM judge sees all N answers to a question
 at once and flags contradictions; embedding clustering provides a judge-free

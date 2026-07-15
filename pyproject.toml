@@ -32,6 +32,10 @@ dependencies = [
     "typer>=0.9.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/yarv/coherence-variance"
+Issues = "https://github.com/yarv/coherence-variance/issues"
+
 [project.scripts]
 coherence-variance = "coherence_variance.cli:main"
 

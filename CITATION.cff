@@ -9,6 +9,7 @@ authors:
     given-names: Phil
   - family-names: Barsheshat
     given-names: Yariv
+repository-code: "https://github.com/yarv/coherence-variance"
 version: 0.1.0
 date-released: 2026-07-14
 license: MIT
