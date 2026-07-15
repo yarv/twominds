@@ -1,20 +1,14 @@
 """Orchestration tests for the one-command robust run (`--reps`).
 
-Locks the control flow of ``coherence_variance.cli._judge_reps`` without any API
-calls: rep1 writes the top-level analysis, rep2..repN go to judge_runs/repK,
-and consistency runs exactly once when reps>1 (and never when reps==1).
+Locks the control flow of ``coherence_variance.cli._reps._judge_reps`` without
+any API calls: rep1 writes the top-level analysis, rep2..repN go to
+judge_runs/repK, and consistency runs exactly once when reps>1 (and never when
+reps==1).
 """
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
-from coherence_variance import cli as V  # noqa: E402
+from coherence_variance.cli import _reps as R
 
 
 def _fake_out():
@@ -31,9 +25,9 @@ def _patch(monkeypatch):
         analyze_calls.append(judge_run)
         return _fake_out()
 
-    monkeypatch.setattr(V.analyze_mod, "analyze", fake_analyze)
+    monkeypatch.setattr(R.analyze_mod, "analyze", fake_analyze)
     monkeypatch.setattr(
-        V.report_mod,
+        R.report_mod,
         "build_report_from_run",
         lambda rd: report_calls.append(rd) or "rep.html",
     )
@@ -68,7 +62,7 @@ _KW = dict(
 
 def test_reps_three_does_default_plus_rep2_rep3_then_consistency(monkeypatch, tmp_path):
     a, r, c = _patch(monkeypatch)
-    V._judge_reps(tmp_path, reps=3, consistency=True, **_KW)
+    R._judge_reps(tmp_path, reps=3, consistency=True, **_KW)
     assert a == [None, "rep2", "rep3"]  # rep1 (top-level) + rep2 + rep3
     assert len(r) == 1  # report built once
     assert len(c) == 1  # consistency aggregated once
@@ -76,7 +70,7 @@ def test_reps_three_does_default_plus_rep2_rep3_then_consistency(monkeypatch, tm
 
 def test_reps_one_is_single_pass_no_consistency(monkeypatch, tmp_path):
     a, r, c = _patch(monkeypatch)
-    V._judge_reps(tmp_path, reps=1, consistency=True, **_KW)
+    R._judge_reps(tmp_path, reps=1, consistency=True, **_KW)
     assert a == [None]
     assert len(r) == 1
     assert c == []  # consistency only when reps>1
@@ -84,6 +78,6 @@ def test_reps_one_is_single_pass_no_consistency(monkeypatch, tmp_path):
 
 def test_no_consistency_flag_suppresses_aggregation(monkeypatch, tmp_path):
     a, r, c = _patch(monkeypatch)
-    V._judge_reps(tmp_path, reps=2, consistency=False, **_KW)
+    R._judge_reps(tmp_path, reps=2, consistency=False, **_KW)
     assert a == [None, "rep2"]
     assert c == []
