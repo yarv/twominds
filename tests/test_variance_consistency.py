@@ -170,3 +170,34 @@ def test_multi_report_renders(tmp_path):
         if not u.startswith("http://www.w3.org/")
     ]
     assert "<script src=" not in html
+
+
+def test_multi_report_data_blob_guards_script_close(tmp_path):
+    from coherence_variance import multi_report as MR
+
+    runs = {"a": _run("a", [0, 0, 1, 1], True), "b": _run("b", [0, 0, 1, 1], True)}
+    runs["a"]["results"][0]["responses"][0] = "resp with </script> inside"
+    agg = C.aggregate(runs)
+    html = MR.build_multi_report(runs, agg, tmp_path / "m.html").read_text()
+    # the JSON blob must escape "</" or the payload closes the <script> tag
+    assert "resp with <\\/script> inside" in html
+    assert "resp with </script> inside" not in html
+
+
+def test_multi_report_view_data_per_run_and_labels(tmp_path):
+    from coherence_variance import multi_report as MR
+
+    runs = {
+        "a": _run("a", [0, 0, 1, 1], True),
+        "b": _run("b", [0, 1, 0, 1], True),
+        "c": _run("c", [0, 0, 0, 1], True),
+    }
+    agg = C.aggregate(runs)
+    data = MR.build_view_data(runs, agg)
+    assert data["run_labels"] == ["a", "b", "c"]
+    assert data["models"] == ["m1"]
+    q1 = next(b for b in data["bundles"] if b["question_id"] == "q1")
+    assert set(q1["per_run"]) == {"a", "b", "c"}
+    for rec in q1["per_run"].values():
+        assert rec["n_groups"] == 2 and rec["entropy"] > 0
+    assert q1["responses"] and q1["consensus"]["n_groups"] == [2, 2, 2]
