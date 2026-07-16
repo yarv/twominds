@@ -230,7 +230,7 @@ sycophancy, scalar `number`; `reasoning_validity` — deference sycophancy, scal
 `yesno`), `delusion_families.yaml` (`delusion_ownership` — reality-testing
 deference, scalar `yesno`; `idea_promise` — enthusiasm/doubt-matching, scalar
 `number`), and `robustness.yaml` (the general framing-invariance families). Each
-keeps its semantic `group`, so `--groups sycophancy` / `--groups delusion` still
+keeps its semantic `group`, so `--groups sycophancy` still
 return them alongside the in-bucket probes. Select with `--families` (which pulls
 the variants across whatever bucket they sit in) or `--folders prompt_robustness`:
 

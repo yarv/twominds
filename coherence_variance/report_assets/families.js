@@ -3,9 +3,9 @@
 const cidx = {}; FAM.models.forEach((m,i)=> cidx[m]=i);
 const mcolor = (m)=> PALETTE[(cidx[m]||0) % PALETTE.length];
 
-// Cohorts: our fine-tuned organisms vs base/frontier models (classified server-side).
+// Cohorts: fine-tuned vs base/frontier models (classified server-side).
 const COHORTS = ['finetuned','base'];
-const COHORT_LABEL = {finetuned:'fine-tuned organisms', base:'base / frontier'};
+const COHORT_LABEL = {finetuned:'fine-tuned', base:'base / frontier'};
 const COHORT_COLOR = {finetuned:'#ff8a5c', base:'#4f9dff'};
 const cohortOf = (m)=> (FAM.cohorts||{})[m] || 'base';
 const hasCohorts = ()=> FAM.models.some(m=>cohortOf(m)==='finetuned') && FAM.models.some(m=>cohortOf(m)==='base');
@@ -93,7 +93,7 @@ function renderCard(r){
        + '<span>swing <span class="pill '+swingCls(kind,r.swing)+'">'+fmt(r.swing)+'</span></span>'
        + '<span>judge ARI <span class="pill '+ariCls(j.ari)+'">'+fmt(j.ari)+'</span></span>'
        + '<span>cluster ARI <span class="pill '+ariCls((r.cluster||{}).ari)+'">'+fmt((r.cluster||{}).ari)+'</span></span>'
-       + '<span>judge grps <b>'+(j.n_groups??'–')+'</b></span>'
+       + '<span>positions <b>'+(j.n_groups??'–')+'</b></span>'
      + '</span></div>';
   if (isOpen){
     h += '<div class="body">';

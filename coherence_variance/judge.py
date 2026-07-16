@@ -130,10 +130,8 @@ def _format_responses(responses: list[str], max_chars: int) -> str:
 
 def _extract_json(text: str) -> Optional[dict]:
     """Pull the last balanced {...} object out of a model reply."""
-    # Strip code fences if present.
     fenced = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     candidates = list(fenced)
-    # Also scan for top-level braces (greedy last object).
     depth = 0
     start = None
     for i, ch in enumerate(text):
@@ -220,13 +218,11 @@ def get_judge_model(
 
 
 # --------------------------------------------------------------------------- #
-# Inspect-native judge: one cross-sample bundle == one Sample.
-#
-# The hand-rolled asyncio batch was replaced by an Inspect ``eval`` so the judge
-# gets Inspect's own connection pool (``max_connections``) and writes a real
-# judge log (``.eval`` + ``.json``) for the analysis phase — symmetric with
-# generation. A custom solver does the 2-attempt parse-retry; a scorer parses the
-# final reply into the JudgeResult, stored as JSON in the score metadata.
+# Inspect-native judge: one cross-sample bundle == one Sample. Running as an
+# Inspect ``eval`` gives the judge Inspect's connection pool (``max_connections``)
+# and a real judge log (``.eval`` + ``.json``) — symmetric with generation. A
+# custom solver does the 2-attempt parse-retry; a scorer parses the final reply
+# into the JudgeResult, stored as JSON in the score metadata.
 # --------------------------------------------------------------------------- #
 def _judge_dataset(items, max_response_chars: int):
     """items: list of (key, question_text, responses) -> Inspect samples."""

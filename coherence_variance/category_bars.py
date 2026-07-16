@@ -13,8 +13,8 @@ The "category" is each bundle's ``group`` field (e.g. ``ai_safety``,
 the category, per model. Categories are ordered most-variable first.
 
 Used two ways:
-  * embedded (as a base64 ``<img>``) at the top of every ``report.html`` by
-    ``coherence_variance.report.build_report``, which also drops a sibling PNG;
+  * ``report.build_report`` drops it as a sibling PNG next to every report.html
+    (the interactive in-page chart is the primary view);
   * standalone for a paper-ready figure:
         python -m coherence_variance.category_bars <run_dir> [--metric ...]
 """
@@ -22,7 +22,6 @@ Used two ways:
 from __future__ import annotations
 
 import argparse
-import base64
 import io
 import json
 from collections import defaultdict
@@ -37,8 +36,8 @@ from coherence_variance.report_ui import PALETTE, is_family_question  # noqa: E4
 
 # metrics[key] -> y-axis label. Keys are fields of each result's ``metrics`` dict.
 METRICS = {
-    "group_entropy": "mean judge-group entropy (nats)",
-    "n_judge_groups": "mean # judge self-consistency groups",
+    "group_entropy": "mean answer spread (entropy, nats)",
+    "n_judge_groups": "mean # distinct positions (judge)",
     "cluster_entropy": "mean embedding-cluster entropy (nats)",
 }
 
@@ -216,17 +215,6 @@ def png_bytes(
     fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     return buf.getvalue()
-
-
-def data_uri(
-    analysis: dict, metric: str | None = None, run_label: str | None = None, **kwargs
-) -> str | None:
-    """A ``data:image/png;base64,...`` URI (for embedding in the self-contained
-    report), or None when there is no data to chart."""
-    b = png_bytes(analysis, metric, run_label, **kwargs)
-    return (
-        None if b is None else "data:image/png;base64," + base64.b64encode(b).decode()
-    )
 
 
 def save_png(
