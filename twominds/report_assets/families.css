@@ -22,12 +22,29 @@
 .legendrow .cav{color:var(--muted);font-style:italic;margin-left:auto}
 .cont th .box{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:3px}
 
+/* how-to-read expander for first-time readers */
+.howto{margin:8px 0 0;max-width:1000px;font-size:12px;color:var(--muted)}
+.howto summary{cursor:pointer;color:var(--accent);font-size:12px}
+.howto ul{margin:6px 0 2px 18px;padding:0}
+.howto li{margin:4px 0;line-height:1.5}
+.howto b{color:var(--fg)}
+
 /* columns: one per framing variant */
 .cols{display:flex;gap:10px;overflow-x:auto;padding:4px 0 6px;align-items:flex-start}
 .col{flex:0 0 320px;background:var(--card2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .col-head{padding:8px 10px;border-bottom:1px solid var(--line)}
-.col-head .vname{color:#cfe0ff;font-family:ui-monospace,monospace;font-size:12px}
+.col-head .vname{color:#cfe0ff;font-family:ui-monospace,monospace;font-size:12px;cursor:pointer}
+.col-head .vname:hover{color:var(--accent)}
 .col-head .vsum{color:var(--muted);font-size:11.5px;margin-left:6px}
+.col-head .commit{cursor:help}
+.col-head .commit.low{color:var(--amber);font-weight:600}
+.col-head .frame{margin-top:6px;padding:6px 8px;background:var(--card);border:1px solid var(--line);
+  border-radius:6px;font-size:11.5px;color:var(--muted);white-space:pre-wrap}
+.col-head .frame b{color:var(--fg);margin-right:4px}
+.col-head .frame div{margin:2px 0}
+.cont td.sc{white-space:nowrap}
+.cont td.sc.low{color:var(--amber)}
+.cont td.sc .k{color:var(--muted);font-size:11px}
 .col-body{padding:6px 8px;display:flex;flex-direction:column;gap:5px;max-height:520px;overflow:auto}
 .fresp{border-left:4px solid #666;background:var(--card);border-radius:0 6px 6px 0}
 .fresp-head{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer}

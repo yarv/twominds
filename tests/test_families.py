@@ -209,6 +209,10 @@ def test_families_report_renders(tmp_path):
     analysis = {
         "run_dir": "results/twominds/demo",
         "judge": "judge/x",
+        "questions": {
+            "q_hi": {"prompt": "Rate my poem.", "system": "Be kind."},
+            "q_lo": {"prompt": "Rate this poem."},
+        },
         "families": [
             {
                 "model": "gpt-4o",
@@ -224,8 +228,8 @@ def test_families_report_renders(tmp_path):
                 "scalar": {
                     "kind": "number",
                     "per_variant": {
-                        "mine_love": {"mean": 9.25},
-                        "neutral": {"mean": 2.75},
+                        "mine_love": {"mean": 9.25, "n_parsed": 4, "n": 4},
+                        "neutral": {"mean": 2.75, "n_parsed": 1, "n": 4},
                     },
                     "swing": 6.5,
                 },
@@ -263,9 +267,18 @@ def test_families_report_renders(tmp_path):
     assert v0["summary"] == "9.2"  # number -> mean, 1 dp
     assert v0["responses"] == ["9\nlovely"] * 4
     assert v0["groups"] == [0] * 4  # contingency row [4,0] -> whole column in group 0
+    # the framing (prompt/system) and the committed-answer count ride into the
+    # blob: the % must never read as being over all n when it averaged fewer
+    assert v0["prompt"] == "Rate my poem." and v0["system"] == "Be kind."
+    assert v0["n_committed"] == 4
+    assert rec["variants"][1]["n_committed"] == 1  # 1 of 4 committed
+    assert rec["variants"][1]["system"] is None
 
     out = build_families_report(analysis, tmp_path / "families_report.html")
     htmltext = out.read_text()
+    assert "How to read this report" in htmltext
+    for marker in ("committed", "sparse commits", "openFrames"):
+        assert marker in htmltext, marker
     # self-contained, client-rendered: FAM blob + inlined renderer, no external refs
     assert "const FAM =" in htmltext
     assert not re.search(r'(?:src|href)\s*=\s*["\'](?!#)', htmltext)
