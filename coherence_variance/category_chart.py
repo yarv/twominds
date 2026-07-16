@@ -31,6 +31,7 @@ single renderer works against both reports despite their different ``DATA`` shap
 from __future__ import annotations
 
 from coherence_variance import category_bars as cb
+from coherence_variance.report_ui import is_family_question
 
 # Canonical metric order + display labels. The three judge/embedding entropy
 # metrics come from category_bars.METRICS; cosine distance is chart-only.
@@ -87,13 +88,7 @@ def _assemble(
     }
 
 
-def _is_family_q(qmeta: dict, qid: str) -> bool:
-    """A cross-variant framing-family question. Within-prompt resampling is the
-    wrong metric for these (the signal is the cross-variant split, see
-    ``families.py`` / ``families_report.html``), so they are excluded from the
-    within-prompt category chart rather than shown as meaningless low-variance bars.
-    """
-    return bool((qmeta.get(qid) or {}).get("family"))
+_is_family_q = is_family_question
 
 
 def build_chart_data(analysis: dict) -> dict:
@@ -217,18 +212,11 @@ CHART_CSS = """
 """
 
 # Wrapped in an IIFE so its internal `const`s never collide with the host report's
-# top-level script scope (which already declares $, PALETTE, esc, fmt, …).
+# top-level script scope. Helper primitives ($, PALETTE, svgEl, elh, mean, pstd,
+# fmt, trunc, ccYAxis, ccErrorBar) come from report_ui.BASE_JS, which every host
+# loads before this script.
 CHART_JS = r"""
 (function(){
-  const PALETTE = ['#4f9dff','#ff8a5c','#5ad19a','#c98bff','#ffd24a','#ff6b9d','#6be0e0','#b0b85a','#e0846b','#8a9bff','#7ad17a','#d99bff'];
-  const SVGNS = 'http://www.w3.org/2000/svg';
-  const svg = (t,a,txt)=>{ const e=document.createElementNS(SVGNS,t); for(const k in (a||{})) e.setAttribute(k,a[k]); if(txt!=null) e.textContent=txt; return e; };
-  const elh = (t,a,txt)=>{ const e=document.createElement(t); for(const k in (a||{})) e.setAttribute(k,a[k]); if(txt!=null) e.textContent=txt; return e; };
-  const mean = (xs)=> xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : 0;
-  const pstd = (xs)=>{ if(xs.length<2) return 0; const m=mean(xs); return Math.sqrt(xs.reduce((s,x)=>s+(x-m)*(x-m),0)/xs.length); };
-  const fmt = (x)=> (x==null||isNaN(x)) ? '–' : Number(x).toFixed(2);
-  const trunc = (s,n)=> (s&&s.length>n) ? s.slice(0,n-1)+'…' : (s||'');
-
   window.initCategoryChart = function(DATA, mountId, opts){
     opts = opts || {};
     const root = document.getElementById(mountId);
@@ -330,19 +318,8 @@ CHART_JS = r"""
       if (!(maxY>0)) maxY = 1;
       const plotH = H - PAD.t - PAD.b;
       const y = (v)=> PAD.t + plotH*(1 - v/maxY);
-      const s = svg('svg', {width:W, height:H, viewBox:'0 0 '+W+' '+H});
-
-      // y grid + ticks
-      const NT=5;
-      for (let i=0;i<=NT;i++){
-        const v=maxY*i/NT, yy=y(v);
-        s.appendChild(svg('line', {x1:PAD.l, y1:yy, x2:W-PAD.r, y2:yy, class:i?'grid':'axis'}));
-        s.appendChild(svg('text', {x:PAD.l-7, y:yy+4, 'text-anchor':'end', 'font-size':10}, v.toFixed(2)));
-      }
-      // y label
-      const yl = svg('text', {x:14, y:PAD.t+plotH/2, 'text-anchor':'middle', 'font-size':11,
-        transform:'rotate(-90 14 '+(PAD.t+plotH/2)+')'}, DATA.metric_labels[S.metric]||S.metric);
-      s.appendChild(yl);
+      const s = svgEl('svg', {width:W, height:H, viewBox:'0 0 '+W+' '+H});
+      ccYAxis(s, PAD, W, plotH, maxY, DATA.metric_labels[S.metric]||S.metric);
 
       groups.forEach((g, gi)=>{
         const x0 = PAD.l + gi*band, inner = band - 14, bw = Math.min(inner/nb, 40);
@@ -350,33 +327,27 @@ CHART_JS = r"""
         g.bars.forEach((b)=>{
           const j = selModels.indexOf(b.model);
           const bx = start + j*bw, by = y(b.mean), bh = (PAD.t+plotH) - by;
-          const rect = svg('rect', {x:bx+1, y:by, width:Math.max(1,bw-2), height:Math.max(0,bh),
+          const rect = svgEl('rect', {x:bx+1, y:by, width:Math.max(1,bw-2), height:Math.max(0,bh),
             fill:color(b.model), rx:2, class:'bar'});
           const tip = mlabel(b.model)+' · '+g.label+'\n'+(DATA.metric_labels[S.metric]||S.metric)+'='+fmt(b.mean)
             + (b.std>0 ? (' ± '+fmt(b.std)+' (SD over '+b.k+' passes)') : '')
             + (S.mode==='agg' ? ('\n'+b.nq+' question'+(b.nq===1?'':'s')) : '');
-          rect.appendChild(svg('title', {}, tip));
+          rect.appendChild(svgEl('title', {}, tip));
           rect.addEventListener('click', ()=> onBar(g, b));
           s.appendChild(rect);
-          if (b.std>0){  // error bar: stem + caps at mean ± SD
-            const cx=bx+bw/2, yhi=y(b.mean+b.std), ylo=y(Math.max(0,b.mean-b.std)), cap=Math.min(5,bw/3);
-            const ec='#e7ebf3';
-            s.appendChild(svg('line', {x1:cx, y1:yhi, x2:cx, y2:ylo, stroke:ec, 'stroke-width':1.3}));
-            s.appendChild(svg('line', {x1:cx-cap, y1:yhi, x2:cx+cap, y2:yhi, stroke:ec, 'stroke-width':1.3}));
-            s.appendChild(svg('line', {x1:cx-cap, y1:ylo, x2:cx+cap, y2:ylo, stroke:ec, 'stroke-width':1.3}));
-          }
+          if (b.std>0) ccErrorBar(s, bx+bw/2, y(b.mean+b.std), y(Math.max(0,b.mean-b.std)), bw);
         });
         // x label (rotated), clickable
         const lx = x0 + band/2, ly = PAD.t+plotH+12;
-        const t = svg('text', {x:lx, y:ly, 'text-anchor':'end', 'font-size':10, class:'xlbl',
+        const t = svgEl('text', {x:lx, y:ly, 'text-anchor':'end', 'font-size':10, class:'xlbl',
           transform:'rotate(-35 '+lx+' '+ly+')'}, trunc(g.label, 16));
         const full = S.mode==='drill' ? ((DATA.questions[g.qid]||{}).prompt || g.label) : g.label;
-        t.appendChild(svg('title', {}, full + (S.mode==='agg' ? ' — click to drill into questions' : ' — click for responses')));
+        t.appendChild(svgEl('title', {}, full + (S.mode==='agg' ? ' — click to drill into questions' : ' — click for responses')));
         t.addEventListener('click', ()=> onLabel(g));
         s.appendChild(t);
       });
       // baseline
-      s.appendChild(svg('line', {x1:PAD.l, y1:PAD.t+plotH, x2:W-PAD.r, y2:PAD.t+plotH, class:'axis'}));
+      s.appendChild(svgEl('line', {x1:PAD.l, y1:PAD.t+plotH, x2:W-PAD.r, y2:PAD.t+plotH, class:'axis'}));
       const wrap = elh('div', {class:'cc-scroll'}); wrap.appendChild(s);
       return wrap;
     }

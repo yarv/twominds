@@ -40,80 +40,21 @@ import json
 from pathlib import Path
 
 from coherence_variance import category_chart
+from coherence_variance.report_ui import (
+    BASE_CSS,
+    BASE_JS,
+    fam_verdict,
+    html_document,
+    json_blob,
+)
 
+# Report-specific styles on top of report_ui.BASE_CSS.
 _CSS = """
-:root {
-  --bg:#0f1115; --card:#1a1d24; --card2:#13161c; --muted:#8b93a7; --fg:#e6e9ef;
-  --line:#2a2f3a; --accent:#4f9dff; --red:#ff6b6b; --amber:#ffd24a; --purple:#c98bff;
-}
-* { box-sizing: border-box; }
-body { margin:0; background:var(--bg); color:var(--fg);
-  font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
-header { padding:14px 20px; border-bottom:1px solid var(--line); position:sticky; top:0;
-  background:rgba(15,17,21,.97); backdrop-filter:blur(6px); z-index:10; }
-h1 { font-size:18px; margin:0; }
-.dash { color:var(--muted); font-size:12.5px; margin-top:4px; }
-.dash b { color:var(--fg); }
-.dash .chip { display:inline-block; margin-right:12px; }
-.dash .hot { color:var(--red); } .dash .warm { color:var(--amber); }
-.controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:12px; }
-.controls label { font-size:11.5px; color:var(--muted); display:flex; gap:5px; align-items:center; }
-select, input[type=number], input[type=text] { background:var(--card); color:var(--fg);
-  border:1px solid var(--line); border-radius:6px; padding:4px 7px; font-size:12.5px; }
-input[type=number] { width:52px; }
-input[type=text]#search { width:200px; }
-button { background:var(--card); color:var(--fg); border:1px solid var(--line);
-  border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
-button:hover { border-color:var(--accent); }
-
-#cards { padding:14px 20px; display:flex; flex-direction:column; gap:10px; max-width:1180px; }
-.card { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-.card.open { border-color:#39404e; }
-.card-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:11px 14px;
-  cursor:pointer; user-select:none; }
-.card-head:hover { background:#1e222b; }
-.chev { transition:transform .15s; color:var(--muted); font-size:11px; width:10px; }
-.card.open .chev { transform:rotate(90deg); }
-.tag { font-size:11px; padding:1px 7px; border-radius:10px; background:#2a2f3a; color:var(--muted); }
-.tag.model { color:#cfe0ff; background:#22304a; }
-.tag.group { color:#d9ffe6; background:#1f3a2c; }
-.stats { font-size:11.5px; color:var(--muted); display:flex; gap:12px; flex-wrap:wrap; margin-left:auto; }
-.stats b { color:var(--fg); }
-.dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
-.dot.red{background:var(--red);} .dot.amber{background:var(--amber);} .dot.purple{background:var(--purple);}
-.dots { display:flex; gap:5px; align-items:center; }
-
-.body { padding:0 14px 12px; border-top:1px solid var(--line); }
-.q { color:var(--muted); font-size:12px; white-space:pre-wrap; margin:10px 0; max-height:140px;
-  overflow:auto; border-left:2px solid var(--line); padding-left:9px; }
-.rationale { font-size:12.5px; margin:8px 0; }
-.flags { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
-.flag { font-size:11px; padding:1px 8px; border-radius:10px; background:#3a2a2a; color:#ffb3b3; }
-.flag.parsefail { background:#3a3520; color:var(--amber); }
 .legend { display:flex; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--muted); margin:6px 0 2px; }
 .legend .sw { display:inline-flex; gap:4px; align-items:center; }
 .legend .box { width:11px; height:11px; border-radius:3px; display:inline-block; }
 .resp-actions { font-size:11px; color:var(--muted); margin:6px 0; }
 .resp-actions a { color:var(--accent); cursor:pointer; margin-right:10px; }
-
-.sep { font-size:11px; color:var(--muted); margin:10px 0 4px; display:flex; gap:8px; align-items:center; }
-.sep .box { width:11px; height:11px; border-radius:3px; }
-.resp { border-left:4px solid; background:var(--card2); border-radius:0 6px 6px 0; margin:5px 0; }
-.resp-head { display:flex; gap:9px; align-items:center; padding:6px 10px; cursor:pointer; }
-.resp-head:hover { background:#171b22; }
-.resp .badge { font-size:10.5px; color:var(--muted); font-family:ui-monospace,monospace; white-space:nowrap; }
-.resp .swatch { width:9px; height:9px; border-radius:2px; display:inline-block; }
-.resp .snip { color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis;
-  white-space:nowrap; flex:1; }
-.resp .full { white-space:pre-wrap; font-size:12.5px; padding:2px 12px 10px; }
-.empty { color:var(--muted); padding:24px; text-align:center; }
-
-/* banner shown above the cards when the chart focuses one question */
-.qfocus { margin:10px 20px 0; max-width:1180px; padding:7px 12px; border-radius:8px;
-  background:#1f2a3a; border:1px solid #2f3f57; color:#cfe0ff; font-size:12px;
-  display:flex; gap:10px; align-items:center; }
-.qfocus b { color:#fff; } .qfocus .x { margin-left:auto; cursor:pointer; color:var(--muted); }
-.qfocus .x:hover { color:var(--fg); }
 
 /* tabs */
 nav.tabs { display:flex; gap:6px; margin-top:10px; }
@@ -173,19 +114,6 @@ table.tbl { border-collapse:collapse; font-size:12.5px; width:100%; }
 """
 
 _JS = r"""
-const $ = (s)=>document.querySelector(s);
-const PALETTE = ['#4f9dff','#ff8a5c','#5ad19a','#c98bff','#ffd24a','#ff6b9d','#6be0e0','#b0b85a','#e0846b','#8a9bff','#7ad17a','#d99bff'];
-const color = (i)=> i<0 ? '#666' : PALETTE[i % PALETTE.length];
-// Escapes quotes too: esc() output is used inside double-quoted title="..."
-// attributes (Models/Setup tables), where a bare " would end the attribute.
-const esc = (s)=> (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = (x)=> (x==null||isNaN(x)) ? '–' : Number(x).toFixed(2);
-const pct = (x)=> (x==null) ? '–' : Math.round(x*100)+'%';
-// -sum p log p over group frequencies; fallback when metrics.group_entropy is absent (older analyses).
-const entropyOf = (labels)=>{ if(!labels||!labels.length) return 0; const c={}; labels.forEach(l=>c[l]=(c[l]||0)+1);
-  const n=labels.length; let h=0; for(const k in c){const p=c[k]/n; h-=p*Math.log(p);} return h; };
-// (refusal heuristic removed — the judge already isolates refusals as their own self-consistency group)
-const NUL = '\x1f';
 const cardKey = (r)=> r.model + NUL + r.question_id;
 const respKey = (r,i)=> cardKey(r) + NUL + i;
 
@@ -210,27 +138,9 @@ let STATE = Object.assign({}, DEFAULTS);
 const openCards = new Set();   // card keys currently expanded
 const openResps = new Set();   // response keys currently expanded
 
-function loadState(){
-  let s = {};
-  try { s = JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch(e) {}
-  const h = new URLSearchParams(location.hash.slice(1));
-  for (const k of Object.keys(DEFAULTS)){
-    if (!h.has(k)) continue;
-    const v = h.get(k), d = DEFAULTS[k];
-    s[k] = (typeof d==='boolean') ? v==='1' : (typeof d==='number') ? Number(v) : v;
-  }
-  return Object.assign({}, DEFAULTS, s);
-}
-function saveState(){
-  try { localStorage.setItem(SKEY, JSON.stringify(STATE)); } catch(e) {}
-  const h = new URLSearchParams();
-  for (const k of Object.keys(DEFAULTS)){
-    const v = STATE[k]; if (v === DEFAULTS[k]) continue;
-    h.set(k, typeof v==='boolean' ? (v?'1':'0') : String(v));
-  }
-  const hs = h.toString();
-  try { history.replaceState(null, '', hs ? ('#'+hs) : (location.pathname+location.search)); } catch(e) {}
-}
+const STORE = stateStore(SKEY, DEFAULTS);
+const loadState = ()=> STORE.load();
+const saveState = ()=> STORE.save(STATE);
 
 const divergence = (r)=>{ const a = r.agreement && r.agreement[STATE.backend];
   return (a && a.ari!=null) ? (1 - a.ari) : 0; };
@@ -450,14 +360,13 @@ const GLOSSARY = {
   crosscheck: 'Agreement between the judge’s grouping and an independent embedding clustering (adjusted Rand index: 1 = identical, 0 = unrelated). Where this is low, treat the numbers with extra care.',
   variety: 'Average embedding distance between answers — higher means answers are worded/structured more differently. Style variation, not necessarily disagreement.'
 };
-const pct0 = (x)=> x==null ? '–' : Math.round(x*100)+'%';
 // Column set for aggregate tables (overview per-model, models-tab per-category).
 function aggCols(extended){
   const cols = [
     {label:'questions', tip:'answer sets covered (one per question)', cell:(a)=>a.n},
   ];
   if (HAS_JUDGE) cols.push(
-    {label:'fully consistent', tip:GLOSSARY.consist, cell:(a)=>pct0(a.consist)},
+    {label:'fully consistent', tip:GLOSSARY.consist, cell:(a)=>pct(a.consist)},
     {label:'self-contradictions', tip:GLOSSARY.contra, cell:(a)=>a.contra},
     {label:'flagged', tip:GLOSSARY.flagged, cell:(a)=>a.flagged},
     {label:'avg. positions', tip:GLOSSARY.positions, cell:(a)=>fmt(a.meanG)},
@@ -504,7 +413,7 @@ function renderOverview(){
   let t = tile(DATA.models.length,'models','compared side by side')
     + tile(qids.size,'questions','each asked '+(nAnswers??'N')+'× per model');
   if (HAS_JUDGE){
-    t += tile(pct0(a.consist),'fully consistent','answer sets where every answer agrees · higher is better',
+    t += tile(pct(a.consist),'fully consistent','answer sets where every answer agrees · higher is better',
               (a.consist!=null && a.consist<0.5)?'warm':'')
       + tile(a.contra,'self-contradictions','sets with logically incompatible answers · lower is better', a.contra?'hot':'')
       + tile(a.flagged,'flagged','sets with unusual answers (refusals etc.)', a.flagged?'warm':'');
@@ -520,17 +429,17 @@ function renderOverview(){
     const worst = rows.slice().sort((x,y)=>(x.consist??2)-(y.consist??2))[0];
     const best = rows.slice().sort((x,y)=>(y.consist??-1)-(x.consist??-1))[0];
     bullets.push('Least consistent model: <b>'+esc(worst.model)+'</b> — every answer agreed on only '
-      +'<span class="num">'+pct0(worst.consist)+'</span> of its '+worst.n+' questions'
+      +'<span class="num">'+pct(worst.consist)+'</span> of its '+worst.n+' questions'
       +(worst.contra?' ('+worst.contra+' self-contradiction'+(worst.contra===1?'':'s')+')':'')+'.');
     if (best.model!==worst.model)
-      bullets.push('Most consistent: <b>'+esc(best.model)+'</b> ('+pct0(best.consist)+' of questions answered consistently).');
+      bullets.push('Most consistent: <b>'+esc(best.model)+'</b> ('+pct(best.consist)+' of questions answered consistently).');
   }
   const groups = [...new Set(COHERENT_ROWS.map(r=>r.group))].filter(Boolean);
   if (HAS_JUDGE && groups.length>1){
     const ga = groups.map(g=>({g, ...aggRows(COHERENT_ROWS.filter(r=>r.group===g))}))
       .filter(x=>x.consist!=null).sort((x,y)=>x.consist-y.consist);
     if (ga.length) bullets.push('Models waver most on <b>'+esc(ga[0].g)+'</b> questions '
-      +'(consistent on '+pct0(ga[0].consist)+' there'
+      +'(consistent on '+pct(ga[0].consist)+' there'
       +(ga[0].contra?', '+ga[0].contra+' self-contradictions':'')+').');
   }
   if (HAS_JUDGE){
@@ -849,16 +758,6 @@ def _write_sibling_png(analysis: dict, out_path: Path) -> None:
         pass
 
 
-def _fam_verdict(ari: float | None) -> str:
-    if ari is None:
-        return "—"
-    if abs(ari) >= 0.5:
-        return "answer follows the framing"
-    if abs(ari) >= 0.2:
-        return "some framing effect"
-    return "framing-invariant"
-
-
 def _families_tab_html(analysis: dict) -> tuple[str, str]:
     """(nav button, tab section) surfacing the cross-variant framing families.
 
@@ -889,7 +788,7 @@ def _families_tab_html(analysis: dict) -> tuple[str, str]:
             html_mod.escape(str(rec.get("model") or "?")),
             f"{ari:.2f}" if ari is not None else "—",
             f"{swing:.2f}" if swing is not None else "—",
-            _fam_verdict(ari),
+            fam_verdict(ari),
         ]
         rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
     button = '<button data-tab="families">Families</button>'
@@ -918,7 +817,7 @@ def _families_tab_html(analysis: dict) -> tuple[str, str]:
 
 def build_report(analysis: dict, out_path: Path) -> Path:
     out_path = Path(out_path)
-    data_json = json.dumps(analysis).replace("</", "<\\/")
+    data_json = json_blob(analysis)
     n_models = len(analysis.get("models", []))
     n_questions = len(analysis.get("questions") or {}) or len(
         {r.get("question_id") for r in analysis.get("results", [])}
@@ -928,18 +827,10 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     judge = analysis.get("judge") or "(none)"
     backends = ", ".join(analysis.get("backends", [])) or "none (judge-only)"
     _write_sibling_png(analysis, out_path)
-    chart_data = json.dumps(category_chart.build_chart_data(analysis)).replace(
-        "</", "<\\/"
-    )
+    chart_data = json_blob(category_chart.build_chart_data(analysis))
     chart_section = category_chart.chart_section_html("cchart")
     fam_button, fam_section = _families_tab_html(analysis)
-    html = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Response variance — coherence</title>
-<style>{_CSS}{category_chart.CHART_CSS}</style></head>
-<body>
-<header>
+    body = f"""<header>
   <h1>How consistently do these models answer?</h1>
   <div class="dash" style="margin-top:2px">{n_models} models · {n_questions} questions{per_q} ·
     judge: {judge} · embeddings: {backends}</div>
@@ -1016,13 +907,18 @@ def build_report(analysis: dict, out_path: Path) -> Path:
   <div class="pane" id="setupBody"></div>
 </section>
 
+<script>{BASE_JS}</script>
 <script>const CHART = {chart_data};</script>
 <script>{category_chart.CHART_JS}</script>
 <script>const DATA = {data_json};</script>
-<script>{_JS}</script>
-</body></html>
-"""
-    out_path.write_text(html)
+<script>{_JS}</script>"""
+    out_path.write_text(
+        html_document(
+            "Response variance — coherence",
+            BASE_CSS + _CSS + category_chart.CHART_CSS,
+            body,
+        )
+    )
     return out_path
 
 

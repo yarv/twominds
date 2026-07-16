@@ -15,11 +15,11 @@ which-responses-drift on expand, full agreement matrix only on click.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from . import category_chart
 from . import metrics as metrics_mod
+from .report_ui import BASE_CSS, BASE_JS, html_document, json_blob
 
 
 def build_view_data(runs: dict[str, dict], agg: dict) -> dict:
@@ -78,46 +78,10 @@ def build_view_data(runs: dict[str, dict], agg: dict) -> dict:
     }
 
 
+# Multi-report-specific styles on top of report_ui.BASE_CSS.
 _CSS = """
-:root{--bg:#0f1115;--card:#1a1d24;--card2:#13161c;--muted:#8b93a7;--fg:#e6e9ef;--line:#2a2f3a;
---accent:#4f9dff;--red:#ff6b6b;--amber:#ffd24a;--green:#5ad19a;}
-*{box-sizing:border-box;} body{margin:0;background:var(--bg);color:var(--fg);
-font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;}
-header{padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;
-background:rgba(15,17,21,.97);backdrop-filter:blur(6px);z-index:10;}
-h1{font-size:18px;margin:0;} .dash{color:var(--muted);font-size:12.5px;margin-top:5px;}
-.dash b{color:var(--fg);} .dash .chip{margin-right:14px;}
-.controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:12px;}
-.controls label{font-size:11.5px;color:var(--muted);display:flex;gap:5px;align-items:center;}
-select{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:12.5px;}
 select#view{border-color:var(--accent);font-weight:600;}
-button{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;}
-button:hover{border-color:var(--accent);}
-#cards{padding:14px 20px;display:flex;flex-direction:column;gap:10px;max-width:1180px;}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
-.card.open{border-color:#39404e;}
-.card-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:11px 14px;cursor:pointer;user-select:none;}
-.card-head:hover{background:#1e222b;} .chev{color:var(--muted);font-size:11px;width:10px;transition:transform .15s;}
-.card.open .chev{transform:rotate(90deg);}
-.tag{font-size:11px;padding:1px 7px;border-radius:10px;background:#2a2f3a;color:var(--muted);}
-.tag.model{color:#cfe0ff;background:#22304a;} .tag.group{color:#d9ffe6;background:#1f3a2c;}
-.stats{font-size:11.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;align-items:center;}
-.stats b{color:var(--fg);}
 .pill{font-size:11px;padding:1px 8px;border-radius:10px;font-weight:600;}
-.dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
-.body{padding:0 14px 12px;border-top:1px solid var(--line);}
-.q{color:var(--muted);font-size:12px;white-space:pre-wrap;margin:10px 0;max-height:130px;overflow:auto;border-left:2px solid var(--line);padding-left:9px;}
-.rationale{font-size:12.5px;margin:8px 0;} .flags{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;}
-.flag{font-size:11px;padding:1px 8px;border-radius:10px;background:#3a2a2a;color:#ffb3b3;}
-.sep{font-size:11px;color:var(--muted);margin:10px 0 4px;display:flex;gap:8px;align-items:center;}
-.sep .box{width:11px;height:11px;border-radius:3px;}
-.resp{border-left:4px solid;background:var(--card2);border-radius:0 6px 6px 0;margin:5px 0;}
-.resp-head{display:flex;gap:9px;align-items:center;padding:6px 10px;cursor:pointer;}
-.resp-head:hover{background:#171b22;}
-.resp .badge{font-size:10.5px;color:var(--muted);font-family:ui-monospace,monospace;white-space:nowrap;}
-.resp .swatch{width:9px;height:9px;border-radius:2px;display:inline-block;}
-.resp .snip{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
-.resp .full{white-space:pre-wrap;font-size:12.5px;padding:2px 12px 10px;}
 .stab{width:46px;height:6px;border-radius:3px;background:#2a2f3a;overflow:hidden;flex:none;}
 .stab i{display:block;height:100%;}
 .drift{font-size:10px;color:var(--amber);font-weight:600;}
@@ -125,29 +89,21 @@ button:hover{border-color:var(--accent);}
 .matrix{display:grid;gap:1px;margin:6px 0;}
 .matrix .cell{width:13px;height:13px;border-radius:1px;}
 .legend{font-size:11px;color:var(--muted);margin:4px 0;}
-.empty{color:var(--muted);padding:24px;text-align:center;}
-.qfocus{margin:10px 20px 0;max-width:1180px;padding:7px 12px;border-radius:8px;background:#1f2a3a;
-  border:1px solid #2f3f57;color:#cfe0ff;font-size:12px;display:flex;gap:10px;align-items:center;}
-.qfocus b{color:#fff;} .qfocus .x{margin-left:auto;cursor:pointer;color:var(--muted);}
-.qfocus .x:hover{color:var(--fg);}
 """
 
 _JS = r"""
-const $=(s)=>document.querySelector(s);
-const PALETTE=['#4f9dff','#ff8a5c','#5ad19a','#c98bff','#ffd24a','#ff6b9d','#6be0e0','#b0b85a','#e0846b','#8a9bff','#7ad17a','#d99bff'];
-const gcolor=(i)=> i<0?'#666':PALETTE[i%PALETTE.length];
-const esc=(s)=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const fmt=(x)=>(x==null||isNaN(x))?'–':Number(x).toFixed(2);
-const pct=(x)=>(x==null)?'–':Math.round(x*100)+'%';
-const entropyOf=(labels)=>{if(!labels||!labels.length)return 0;const c={};labels.forEach(l=>c[l]=(c[l]||0)+1);
-  const n=labels.length;let h=0;for(const k in c){const p=c[k]/n;h-=p*Math.log(p);}return h;};
 // green(high)->amber->red(low)
 const grade=(x)=> x>=0.85?'#5ad19a':(x>=0.7?'#ffd24a':'#ff6b6b');
 
 let openCards=new Set(), openResps=new Set(), openHeat=new Set();
 let qFilter=null;   // set by clicking a question bar in the category chart
-const ck=(b)=>b.model+'\x1f'+b.question_id;
-const rk=(b,i)=>ck(b)+'\x1f'+i;
+const ck=(b)=>b.model+NUL+b.question_id;
+const rk=(b,i)=>ck(b)+NUL+i;
+
+const DEFAULTS={view:'consensus',model:'__all__',group:'__all__',sort:'consistency'};
+const STORE=stateStore('multi_report_state_v1:'+(DATA.run_labels||[]).join('_'), DEFAULTS);
+const saveSel=()=> STORE.save({view:$('#view').value, model:$('#model').value,
+  group:$('#group').value, sort:$('#sort').value});
 
 function opts(sel,vals,extra){const el=$(sel);el.innerHTML='';if(extra)el.append(new Option(extra[0],extra[1]));
   vals.forEach(v=>el.append(new Option(v,v)));}
@@ -295,10 +251,16 @@ function focusQuestion(info){
 
 function init(){
   opts('#view', DATA.run_labels, ['consensus','consensus']);
-  $('#view').value='consensus';
   opts('#model', DATA.models, ['(all)','__all__']);
-  opts('#group', [...new Set(DATA.bundles.map(b=>b.group))].filter(Boolean), ['(all)','__all__']);
-  ['#view','#model','#group','#sort'].forEach(s=>$(s).addEventListener('change',render));
+  const groups=[...new Set(DATA.bundles.map(b=>b.group))].filter(Boolean);
+  opts('#group', groups, ['(all)','__all__']);
+  // restore persisted filter state (ignore values that don't fit this dataset)
+  const st=STORE.load();
+  $('#view').value = (st.view==='consensus'||DATA.run_labels.includes(st.view)) ? st.view : 'consensus';
+  $('#model').value = (st.model==='__all__'||DATA.models.includes(st.model)) ? st.model : '__all__';
+  $('#group').value = (st.group==='__all__'||groups.includes(st.group)) ? st.group : '__all__';
+  $('#sort').value = ['consistency','groups','model','group'].includes(st.sort) ? st.sort : 'consistency';
+  ['#view','#model','#group','#sort'].forEach(s=>$(s).addEventListener('change',()=>{ saveSel(); render(); }));
   $('#expandAll').addEventListener('click',()=>{DATA.bundles.forEach(b=>openCards.add(ck(b)));render();});
   $('#collapseAll').addEventListener('click',()=>{openCards.clear();render();});
   $('#qfocus').addEventListener('click',(e)=>{ if(e.target.id==='qfocusClear'){ qFilter=null; render(); }});
@@ -317,20 +279,15 @@ init();
 def build_multi_report(runs: dict[str, dict], agg: dict, out_path: Path) -> Path:
     out_path = Path(out_path)
     data = build_view_data(runs, agg)
-    data_json = json.dumps(data).replace("</", "<\\/")
-    chart_data = json.dumps(category_chart.build_chart_data_multi(runs)).replace(
-        "</", "<\\/"
-    )
+    data_json = json_blob(data)
+    chart_data = json_blob(category_chart.build_chart_data_multi(runs))
     chart_section = category_chart.chart_section_html("cchart")
     o = agg["overall"]
     sub = (
         f"{o['n_runs']} judge runs ({', '.join(o['run_labels'])}) · {o['n_bundles']} bundles · "
         f"judge self-consistency view"
     )
-    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Judge runs — multi-view</title><style>{_CSS}{category_chart.CHART_CSS}</style></head><body>
-<header>
+    body = f"""<header>
   <h1>Judge runs &amp; consensus</h1>
   <div class="dash" id="dash"></div>
   <div class="dash" style="margin-top:2px">{sub}</div>
@@ -352,11 +309,16 @@ def build_multi_report(runs: dict[str, dict], agg: dict, out_path: Path) -> Path
 {chart_section}
 <div id="qfocus" class="qfocus" style="display:none"></div>
 <div id="cards"></div>
+<script>{BASE_JS}</script>
 <script>const CHART = {chart_data};</script>
 <script>{category_chart.CHART_JS}</script>
 <script>const DATA = {data_json};</script>
-<script>{_JS}</script>
-</body></html>
-"""
-    out_path.write_text(html)
+<script>{_JS}</script>"""
+    out_path.write_text(
+        html_document(
+            "Judge runs — multi-view",
+            BASE_CSS + _CSS + category_chart.CHART_CSS,
+            body,
+        )
+    )
     return out_path
