@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from coherence_variance.run_meta import JUDGE_META, write_meta
-from coherence_variance.run_registry import discover_judge_passes
+from twominds.run_meta import JUDGE_META, write_meta
+from twominds.run_registry import discover_judge_passes
 
 
 def _analysis(judge_run, n_results):
@@ -54,7 +54,7 @@ def _tree(tmp_path: Path) -> Path:
 
 def _write_all_markers(root: Path):
     """Write real markers for every judge pass via the registry's synthesizer."""
-    from coherence_variance.run_registry import synthesize_judge_meta
+    from twominds.run_registry import synthesize_judge_meta
 
     for run in (root / "variance").iterdir():
         if not run.is_dir():
@@ -125,7 +125,7 @@ def test_load_judge_runs_matches_reference(tmp_path, with_markers):
     if with_markers:
         _write_all_markers(root)
     run = root / "variance" / "sweep1"
-    from coherence_variance.consistency import load_judge_runs
+    from twominds.consistency import load_judge_runs
 
     got = load_judge_runs(run)
     expected = _ref_load_judge_runs(run)

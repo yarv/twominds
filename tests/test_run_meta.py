@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from coherence_variance.run_meta import (
+from twominds.run_meta import (
     RUN_META,
     build_meta,
     read_meta,
@@ -51,9 +51,9 @@ class TestBuildWriteRead:
 
 class TestGenerateWiring:
     def test_write_manifest_emits_run_meta(self, tmp_path):
-        from coherence_variance.generate import write_manifest
-        from coherence_variance.models import ModelSpec
-        from coherence_variance.questions import Question
+        from twominds.generate import write_manifest
+        from twominds.models import ModelSpec
+        from twominds.questions import Question
 
         spec = ModelSpec(name="gpt-4.1", inspect_model="openai/gpt-4.1")
         q = Question(id="q1", group="control", prompt="Say hi.")

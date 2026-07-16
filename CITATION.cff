@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "coherence-variance: within-model response-variance / coherence evals for LLMs"
+title: "TwoMinds: within-model coherence evals for LLMs"
 type: software
 authors:
   - family-names: Graham
@@ -9,7 +9,7 @@ authors:
     given-names: Phil
   - family-names: Barsheshat
     given-names: Yariv
-repository-code: "https://github.com/yarv/coherence-variance"
-version: 0.1.0
-date-released: 2026-07-14
+repository-code: "https://github.com/yarv/twominds"
+version: 0.2.0
+date-released: 2026-07-16
 license: MIT
