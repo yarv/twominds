@@ -39,7 +39,7 @@ jobs:
           python3 - <<'EOF'
           import glob, zipfile
           names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
-          for needle in ("cli.py", "run_meta.py", "report_assets/", "questions/"):
+          for needle in ("cli/__init__.py", "run_meta.py", "report_assets/", "questions/"):
               assert any(needle in n for n in names), f"missing from wheel: {needle}"
           print("wheel ok")
           EOF

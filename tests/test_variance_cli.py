@@ -12,6 +12,8 @@ from typer.testing import CliRunner
 from coherence_variance import cli as VE
 from coherence_variance import questions as questions_mod
 from coherence_variance import store as S
+from coherence_variance.cli import _options as cli_options
+from coherence_variance.cli import _orchestrate as cli_orchestrate
 from coherence_variance.models import DEFAULT_JUDGE, resolve_models
 from coherence_variance.questions import Question
 
@@ -23,7 +25,7 @@ runner = CliRunner()
 @pytest.fixture
 def results_root(tmp_path, monkeypatch):
     root = tmp_path / "variance"
-    monkeypatch.setattr(VE, "_RESULTS_ROOT", root)
+    monkeypatch.setattr(cli_options, "_RESULTS_ROOT", root)
     return root
 
 
@@ -97,7 +99,7 @@ def test_generate_dry_run_omits_judge_cost(keyless):
 
 def test_run_dry_run_reports_cached_models(keyless):
     qs = _selected(groups=["values"])
-    root = S.store_root(VE._RESULTS_ROOT)
+    root = S.store_root(cli_options._RESULTS_ROOT)
     key = S.compute_gen_key(qs, n=3, temperature=1.0, max_tokens=2048)
     spec = resolve_models(["gpt-4.1"])[0]
     S.write_identity(spec, root)
@@ -318,7 +320,7 @@ def _plan(specs, **kw):
     kw.setdefault("max_tokens", 64)
     kw.setdefault("rerun", False)
     kw.setdefault("rerun_models", None)
-    return VE._plan_generations(specs, _QS, **kw)
+    return cli_orchestrate._plan_generations(specs, _QS, **kw)
 
 
 def test_cross_invocation_collision_auto_qualifies(results_root):
@@ -357,13 +359,13 @@ def test_rerun_model_unknown_still_rejected(results_root):
 
 
 def test_resolve_backends_none_and_validation():
-    assert VE._resolve_backends(["none"]) == []
-    assert VE._resolve_backends(["local"]) == ["local"]
-    assert VE._resolve_backends(["local", "openai-3-small"]) == [
+    assert cli_options._resolve_backends(["none"]) == []
+    assert cli_options._resolve_backends(["local"]) == ["local"]
+    assert cli_options._resolve_backends(["local", "openai-3-small"]) == [
         "local",
         "openai-3-small",
     ]
     with pytest.raises(typer.BadParameter, match="cannot be combined"):
-        VE._resolve_backends(["none", "local"])
+        cli_options._resolve_backends(["none", "local"])
     with pytest.raises(typer.BadParameter, match="unknown embedding backend"):
-        VE._resolve_backends(["bogus"])
+        cli_options._resolve_backends(["bogus"])
