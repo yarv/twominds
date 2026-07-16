@@ -50,7 +50,11 @@ def _default_run_dir() -> Path:
 
 
 ModelsOpt = typer.Option(
-    ",".join(DEFAULT_MODELS), "--models", "-m", help="comma-separated roster names"
+    ",".join(DEFAULT_MODELS),
+    "--models",
+    "-m",
+    help="comma-separated models: roster aliases, OpenAI names / fine-tune ids, "
+    "or any Inspect model string",
 )
 GroupsOpt = typer.Option(
     None,

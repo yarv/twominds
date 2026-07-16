@@ -99,7 +99,7 @@ def _do_generate(
 
 
 def _announce_partition(cached, to_generate, gen_key, *, dry_run=False):
-    """Echo the store-reuse summary for a partitioned roster."""
+    """Echo the store-reuse summary for the partitioned models."""
     if cached:
         typer.echo(
             f"reusing {len(cached)} cached generation(s) [gen {gen_key}]: "
@@ -157,7 +157,7 @@ def _plan_generations(
     dry_run=False,
     announce=True,
 ):
-    """Partition the roster into cached vs to-generate against the store.
+    """Partition the models into cached vs to-generate against the store.
 
     Returns ``(gen_key, gen_dirs, cached_names, to_generate_specs)`` and echoes
     the reuse summary. ``rerun``/``rerun_models`` force regeneration (their gen

@@ -356,7 +356,7 @@ const GLOSSARY = {
   consist: 'Share of answer sets (one model × one question) where every answer took the same position. Higher is better.',
   contra: 'Answer sets where two answers took logically incompatible positions. Lower is better.',
   flagged: 'Answer sets where the judge noted something unusual (refusals, identity confusion, striking content).',
-  spread: 'How evenly answers split across positions (entropy). 0 = every answer agrees; ~0.69 = two equal camps; higher = more or evener camps. Lower is better.',
+  spread: 'How evenly answers split across positions (entropy). 0 = every answer agrees; ~0.69 = two equal halves; higher = more or evener positions. Lower is better.',
   crosscheck: 'Agreement between the judge’s grouping and an independent embedding clustering (adjusted Rand index: 1 = identical, 0 = unrelated). Where this is low, treat the numbers with extra care.',
   variety: 'Average embedding distance between answers — higher means answers are worded/structured more differently. Style variation, not necessarily disagreement.'
 };

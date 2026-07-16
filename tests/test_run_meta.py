@@ -29,9 +29,7 @@ class TestBuildWriteRead:
         assert "backfilled" not in got
 
     def test_created_at_override_and_backfilled(self, tmp_path):
-        meta = build_meta(
-            "preferences", created_at="2026-05-21T17:31:57", backfilled=True
-        )
+        meta = build_meta("variance", created_at="2026-05-21T17:31:57", backfilled=True)
         assert meta["created_at"] == "2026-05-21T17:31:57"
         assert meta["backfilled"] is True
 

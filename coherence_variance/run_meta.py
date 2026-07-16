@@ -4,9 +4,7 @@ Every run directory the pipeline creates gets a small JSON marker so runs can
 be discovered, listed, and compared without parsing the heavyweight artefacts
 (a judge pass's provenance is *in* analysis.json, but that file is megabytes):
 
-  run_meta.json    one per run dir — kind: "variance" (one generation run);
-                   "preferences" is a reserved legacy kind some older results
-                   trees contain, kept so discovery never chokes on them.
+  run_meta.json    one per run dir — kind: "variance" (one generation run).
   judge_meta.json  one per judge pass — written next to the analysis.json it
                    describes (the run dir's default pass and each
                    judge_runs/<label>/ repeat pass).
@@ -30,7 +28,7 @@ RUN_META = "run_meta.json"
 JUDGE_META = "judge_meta.json"
 META_VERSION = 1
 
-KINDS = ("preferences", "variance", "judge_pass")
+KINDS = ("variance", "judge_pass")
 
 
 def _git_commit() -> Optional[str]:

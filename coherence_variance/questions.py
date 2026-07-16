@@ -13,7 +13,7 @@ bucket holds every question that belongs to a ``family`` (framing-invariance
 probes): they only carry signal when judged across prompt variants, so the
 main report keeps them out of its within-prompt chart and routes their signal
 to the families analysis instead. A family keeps its semantic ``group`` (e.g.
-``sycophancy``/``delusion``), so such a group spans buckets and ``--groups``
+``sycophancy``), so such a group spans buckets and ``--groups``
 still returns all of it. Heavy text can live in a sibling ``.txt`` referenced
 via ``prompt_file``, resolved relative to the YAML file that names it. Each file:
 
@@ -52,7 +52,7 @@ _ROSTERS_PATH = _QUESTIONS_DIR / "_rosters.yaml"
 # cross-variant framing families (every question with a ``family:``) — they only
 # carry signal when judged ACROSS prompt variants, so the within-prompt report
 # excludes them from its chart and the families analysis carries their signal.
-# A family's ``group`` is preserved (e.g. ``sycophancy``/``delusion``), so such
+# A family's ``group`` is preserved (e.g. ``sycophancy``), so such
 # a group spans buckets.
 BUCKETS = ("tier_1", "tier_2", "prompt_robustness")
 DEFAULT_BUCKETS = ("tier_1", "prompt_robustness")
@@ -244,10 +244,3 @@ def select_questions(
         raise KeyError(f"unknown bucket(s): {bad} (known: {list(BUCKETS)})")
     qs = [q for q in qs if q.bucket in bks]
     return sorted(qs, key=_group_sort_key)
-
-
-def groups_available() -> list[str]:
-    present = {q.group for q in all_questions()}
-    ordered = [g for g in GROUP_ORDER if g in present]
-    ordered += sorted(present - set(ordered))
-    return ordered

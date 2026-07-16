@@ -180,8 +180,8 @@ function renderCard(b){
     const pr=b.per_run[view];
     if(!pr){ return ''; }
     stats=(pr.contradiction?'<span class="dot" style="background:var(--red)" title="contradiction"></span>':'')
-      +'<span>judge groups=<b>'+(pr.n_groups??'–')+'</b></span>'
-      +'<span>H=<b>'+fmt(pr.entropy!=null?pr.entropy:entropyOf(pr.labels))+'</b></span>';
+      +'<span>positions=<b>'+(pr.n_groups??'–')+'</b></span>'
+      +'<span>spread=<b>'+fmt(pr.entropy!=null?pr.entropy:entropyOf(pr.labels))+'</b></span>';
   }
   head+='<span class="stats">'+stats+'</span></div>';
   if(!isOpen) return head+'</div>';
