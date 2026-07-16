@@ -1,1 +1,1 @@
-# Tests for the coherence-variance package
+# Tests for the twominds package

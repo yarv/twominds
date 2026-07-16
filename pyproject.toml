@@ -1,7 +1,7 @@
 [project]
-name = "coherence-variance"
-version = "0.1.0"
-description = "Response-variance / coherence experiments on LLMs: repeated free-form sampling scored by a cross-sample LLM judge and embedding clustering."
+name = "twominds"
+version = "0.2.0"
+description = "TwoMinds: within-model coherence evals for LLMs — repeated free-form sampling scored by a cross-sample LLM judge and embedding clustering."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 license = { file = "LICENSE" }
@@ -33,14 +33,14 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/yarv/coherence-variance"
-Issues = "https://github.com/yarv/coherence-variance/issues"
+Repository = "https://github.com/yarv/twominds"
+Issues = "https://github.com/yarv/twominds/issues"
 
 [project.scripts]
-coherence-variance = "coherence_variance.cli:main"
+twominds = "twominds.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["coherence_variance"]
+packages = ["twominds"]
 
 [build-system]
 requires = ["hatchling"]

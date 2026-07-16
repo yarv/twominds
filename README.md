@@ -1,6 +1,6 @@
-# Coherence variance
+# TwoMinds
 
-[![CI](https://github.com/yarv/coherence-variance/actions/workflows/ci.yml/badge.svg)](https://github.com/yarv/coherence-variance/actions/workflows/ci.yml)
+[![CI](https://github.com/yarv/twominds/actions/workflows/ci.yml/badge.svg)](https://github.com/yarv/twominds/actions/workflows/ci.yml)
 
 **How coherent is an LLM with itself?** Ask a model the same questions N times
 at temperature 1.0. A cross-sample LLM judge sees all N answers to a question
@@ -27,8 +27,8 @@ Prefer fully local embeddings? Opt into the torch-based backend with
 `uv sync --group local-embeddings` and pass `-b local`.
 
 Installed as a package (`pip install .` / a dependency), the same CLI is
-available as `coherence-variance <command>`; from a checkout, use
-`uv run python variance_experiment.py <command>` as below.
+available as `twominds <command>`; from a checkout, use
+`uv run twominds <command>` as below.
 
 ## Run it
 
@@ -37,10 +37,10 @@ model names as-is, OpenRouter models as `openrouter/<vendor>/<model>`, and
 self-hosted or other OpenAI-compatible endpoints (llama-server, vLLM, TGI,
 Together, ...) as `openai-api/<service>/<model>` with
 `<SERVICE>_BASE_URL`/`<SERVICE>_API_KEY` env vars (see
-`coherence_variance/README.md`).
+`twominds/README.md`).
 
 ```bash
-uv run python variance_experiment.py run --n 20 --models \
+uv run twominds run --n 20 --models \
   "ft:gpt-4.1-2025-04-14:your-org:your-model:AbCd1234,gpt-4.1,openrouter/qwen/qwen3-32b"
 
 # torch-based local embeddings instead of the API backend (heavier install):
@@ -63,7 +63,7 @@ making any API calls. It also shows which models would be reused from cache.
 ### Results are reused automatically
 
 Generations (and judge verdicts) are cached per model under
-`results/variance/models/`, keyed by the exact questions + sampling config.
+`results/twominds/models/`, keyed by the exact questions + sampling config.
 Re-running the same command reuses everything and costs nothing; adding a
 model to `--models` only calls the API for the new one. Force fresh
 generations with `--rerun` (all models) or `--rerun-model <name>` (one), or
@@ -71,7 +71,7 @@ bypass the cache entirely with `--no-store`.
 
 ## Look at the results
 
-Everything lands in `results/variance/<timestamp>/`. Open **`report.html`**
+Everything lands in `results/twominds/<timestamp>/`. Open **`report.html`**
 in a browser. It is a single self-contained file: an interactive per-category
 variance chart, plus every question's responses, judge verdicts, and
 clusters. The raw generation and judge calls are kept alongside as Inspect
@@ -102,7 +102,7 @@ never reproduce; the pipeline and the aggregate signals do. What to rely on:
 ## More
 
 `EXTENDING.md` is the recipe book for adding questions, families, models, and
-backends. `coherence_variance/README.md` covers the rest: opt-in question buckets
+backends. `twominds/README.md` covers the rest: opt-in question buckets
 (`tier_2`, `prompt_robustness` framing families), repeat judge runs and
 consistency checks, embedding backends, and how to add questions or models.
 

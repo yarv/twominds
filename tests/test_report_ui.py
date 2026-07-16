@@ -10,15 +10,15 @@ import subprocess
 
 import pytest
 
-from coherence_variance import category_bars as cb
-from coherence_variance import consistency as C
-from coherence_variance import families_report as F
-from coherence_variance import multi_report as MR
-from coherence_variance import report as R
-from coherence_variance import report_ui
+from twominds import category_bars as cb
+from twominds import consistency as C
+from twominds import families_report as F
+from twominds import multi_report as MR
+from twominds import report as R
+from twominds import report_ui
 
-from .test_variance_consistency import _run
-from .test_variance_report import _analysis_with_family
+from .test_consistency import _run
+from .test_report import _analysis_with_family
 
 _DECL = re.compile(r"^(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)", re.M)
 

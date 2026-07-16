@@ -24,13 +24,12 @@ jobs:
       # without auth. Catches stale help text and import-time regressions.
       - name: CLI smoke (keyless)
         run: |
-          uv run python variance_experiment.py --help
-          uv run python variance_experiment.py run --help
-          uv run python variance_experiment.py generate --help
-          uv run python variance_experiment.py analyze --help
-          uv run python variance_experiment.py report --help
-          uv run coherence-variance --help
-          uv run python variance_experiment.py run --dry-run \
+          uv run twominds --help
+          uv run twominds run --help
+          uv run twominds generate --help
+          uv run twominds analyze --help
+          uv run twominds report --help
+          uv run twominds run --dry-run \
             --groups values --models gpt-4.1-mini --n 3
 
       - name: Wheel builds and carries its data files
