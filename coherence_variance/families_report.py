@@ -32,10 +32,11 @@ columns the judge kept whole).
 from __future__ import annotations
 
 import html
-import json
 from pathlib import Path
 
+from . import category_chart
 from .models import cohort_of
+from .report_ui import BASE_CSS, BASE_JS, FAM_ARI_BANDS, html_document, json_blob
 
 _ASSETS = Path(__file__).resolve().parent / "report_assets"
 _CSS = (_ASSETS / "families.css").read_text()
@@ -197,6 +198,7 @@ def build_fam(analysis: dict) -> dict:
         "cohorts": cohorts,
         "families": families,
         "records": records,
+        "ari_bands": list(FAM_ARI_BANDS),
     }
 
 
@@ -258,18 +260,13 @@ _LEGEND_RECOVERED = (
 def build_families_report(analysis: dict, out_path: Path) -> Path:
     out_path = Path(out_path)
     fam = build_fam(analysis)
-    data_json = json.dumps(fam).replace("</", "<\\/")
+    data_json = json_blob(fam)
 
     n_models, n_fams = len(fam["models"]), len(fam["families"])
     n_bundles = len(fam["records"])
     recovered = fam["groups_source"] == "contingency"
     title = "Cross-variant coherence — framing-invariance"
-    doc = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title><style>
-{_CSS}</style></head>
-<body>
-<header>
+    body = f"""<header>
   <h1>{title}</h1>
   <div class="dash" id="dash"></div>
   <div class="dash" style="margin-top:2px">{n_models} models · {n_fams} families · {n_bundles} bundles · run: {_esc(fam["run_dir"])} · judge: {_esc(fam["judge"])}</div>
@@ -292,16 +289,18 @@ def build_families_report(analysis: dict, out_path: Path) -> Path:
     <button id="reset" title="restore all filters to defaults">reset</button>
   </div>
 </header>
-<section id="chart">
+<section id="chart" class="cchart">
   <div class="cc-bar" id="chartctl"></div>
   <div id="chartsvg"></div>
   <div class="cc-cap" id="chartcap"></div>
 </section>
 <div id="cards"></div>
 {_noscript_table(fam)}
+<script>{BASE_JS}</script>
 <script>const FAM = {data_json};</script>
 <script>
-{_JS}</script>
-</body></html>"""
-    out_path.write_text(doc)
+{_JS}</script>"""
+    out_path.write_text(
+        html_document(title, BASE_CSS + category_chart.CHART_CSS + _CSS, body)
+    )
     return out_path

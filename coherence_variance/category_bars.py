@@ -33,22 +33,7 @@ import matplotlib
 matplotlib.use("Agg")  # headless: render straight to PNG bytes / file
 import matplotlib.pyplot as plt  # noqa: E402
 
-# Model bar colours match report.py's JS PALETTE so the figure and the
-# interactive HTML legend agree on which colour is which model.
-PALETTE = [
-    "#4f9dff",
-    "#ff8a5c",
-    "#5ad19a",
-    "#c98bff",
-    "#ffd24a",
-    "#ff6b9d",
-    "#6be0e0",
-    "#b0b85a",
-    "#e0846b",
-    "#8a9bff",
-    "#7ad17a",
-    "#d99bff",
-]
+from coherence_variance.report_ui import PALETTE, is_family_question  # noqa: E402
 
 # metrics[key] -> y-axis label. Keys are fields of each result's ``metrics`` dict.
 METRICS = {
@@ -100,9 +85,12 @@ def aggregate(analysis: dict, metric: str):
     order but drops any with no data; ``categories`` are ordered by descending
     overall mean (most-variable category first)."""
     results = analysis.get("results", [])
+    qmeta = analysis.get("questions") or {}
     models = list(analysis.get("models") or sorted({r["model"] for r in results}))
     buckets: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     for r in results:
+        if is_family_question(qmeta, r["question_id"]):
+            continue
         v = (r.get("metrics") or {}).get(metric)
         if v is None:
             continue

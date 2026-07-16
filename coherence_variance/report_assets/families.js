@@ -1,18 +1,7 @@
-const $ = (s)=>document.querySelector(s);
-const PALETTE = ['#4f9dff','#ff8a5c','#5ad19a','#c98bff','#ffd24a','#ff6b9d','#6be0e0','#b0b85a','#e0846b','#8a9bff','#7ad17a','#d99bff'];
-const esc = (s)=> (s==null?'':String(s)).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const fmt = (x)=> (x==null||isNaN(x)) ? '–' : Number(x).toFixed(2);
-const NUL = '\x1f';
-const SVGNS = 'http://www.w3.org/2000/svg';
-const svgEl = (t,a,txt)=>{ const e=document.createElementNS(SVGNS,t); for(const k in (a||{})) e.setAttribute(k,a[k]); if(txt!=null) e.textContent=txt; return e; };
-const elh = (t,a,txt)=>{ const e=document.createElement(t); for(const k in (a||{})) e.setAttribute(k,a[k]); if(txt!=null) e.textContent=txt; return e; };
-const mean = (xs)=> xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : 0;
-
+// Helper primitives ($, PALETTE, esc, fmt, NUL, svgEl, elh, mean, pstd, gcolor,
+// ccYAxis, ccErrorBar, stateStore) come from report_ui.BASE_JS, loaded first.
 const cidx = {}; FAM.models.forEach((m,i)=> cidx[m]=i);
 const mcolor = (m)=> PALETTE[(cidx[m]||0) % PALETTE.length];
-// group color for the pooled-judge tint on each response (-1/absent => neutral grey)
-const gcolor = (g)=> (g==null||g<0) ? '#555' : PALETTE[g % PALETTE.length];
-const pstd = (xs)=>{ if(xs.length<2) return 0; const m=mean(xs); return Math.sqrt(xs.reduce((s,x)=>s+(x-m)*(x-m),0)/xs.length); };
 
 // Cohorts: our fine-tuned organisms vs base/frontier models (classified server-side).
 const COHORTS = ['finetuned','base'];
@@ -42,22 +31,9 @@ let focusKey = null;           // a card the chart pointed us at (highlight)
 const cardKey = (r)=> r.model + NUL + r.family;
 const respKey = (r,vi,i)=> cardKey(r) + NUL + vi + NUL + i;
 
-function loadState(){
-  let s = {};
-  try { s = JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch(e) {}
-  const h = new URLSearchParams(location.hash.slice(1));
-  for (const k of ['model','family','sort','search','metric','cmode']) if (h.has(k)) s[k]=h.get(k);
-  if (h.has('onlyContra')) s.onlyContra = h.get('onlyContra')==='1';
-  return Object.assign({}, DEFAULTS, s);
-}
-function saveState(){
-  try { localStorage.setItem(SKEY, JSON.stringify(STATE)); } catch(e) {}
-  const h = new URLSearchParams();
-  for (const k of ['model','family','sort','search','metric','cmode']) if (STATE[k]!==DEFAULTS[k]) h.set(k, STATE[k]);
-  if (STATE.onlyContra) h.set('onlyContra','1');
-  const hs = h.toString();
-  history.replaceState(null, '', hs ? ('#'+hs) : (location.pathname+location.search));
-}
+const STORE = stateStore(SKEY, DEFAULTS);
+const loadState = ()=> STORE.load();
+const saveState = ()=> STORE.save(STATE);
 
 // ---- chart model selection (Set of model names; null === all) ----
 function selModels(){ return STATE.cmodels ? new Set(STATE.cmodels) : new Set(FAM.models); }
@@ -96,7 +72,9 @@ function sortRecords(rows){
 const swingCls = (kind, x)=>{ if (x==null) return 'g-mut';
   if (kind==='number') return x<1.0?'g-green':x<3.0?'g-amber':'g-red';
   return x<0.15?'g-green':x<0.40?'g-amber':'g-red'; };
-const ariCls = (x)=> x==null ? 'g-mut' : (x<0.10?'g-green':x<0.40?'g-amber':'g-red');
+// framing-effect ARI banding from report_ui.FAM_ARI_BANDS (injected via FAM)
+const ARI_BANDS = FAM.ari_bands || [0.10, 0.40];
+const ariCls = (x)=> x==null ? 'g-mut' : (x<ARI_BANDS[0]?'g-green':x<ARI_BANDS[1]?'g-amber':'g-red');
 
 // ---- bundle card ----
 function renderCard(r){
@@ -273,14 +251,7 @@ function drawChart(){
   maxY = Math.max(maxY, 0.0001); if (maxY < 1) maxY = Math.min(1, maxY*1.15);
   const plotH = H - PAD.t - PAD.b, y = (v)=> PAD.t + plotH*(1 - v/maxY);
   const s = svgEl('svg', {width:W, height:H, viewBox:'0 0 '+W+' '+H});
-  const NT = 5;
-  for (let i=0;i<=NT;i++){
-    const v=maxY*i/NT, yy=y(v);
-    s.appendChild(svgEl('line', {x1:PAD.l, y1:yy, x2:W-PAD.r, y2:yy, class:i?'grid':'axis'}));
-    s.appendChild(svgEl('text', {x:PAD.l-7, y:yy+4, 'text-anchor':'end', 'font-size':10}, v.toFixed(2)));
-  }
-  s.appendChild(svgEl('text', {x:13, y:PAD.t+plotH/2, 'text-anchor':'middle', 'font-size':11,
-    transform:'rotate(-90 13 '+(PAD.t+plotH/2)+')'}, mlabel(STATE.metric)));
+  ccYAxis(s, PAD, W, plotH, maxY, mlabel(STATE.metric));
   groups.forEach((g, gi)=>{
     const x0 = PAD.l + gi*band, bw = Math.min((band-14)/nb, STATE.cmode==='cohort'?44:30);
     const start = x0 + (band - bw*nb)/2;
@@ -298,12 +269,7 @@ function drawChart(){
       rect.addEventListener('click', ()=> b.cohort ? (STATE.cmode='model', saveState(), chartControls(), drawChart())
                                                    : focusCard(b.model, g.fid));
       s.appendChild(rect);
-      if (b.std>0){  // ±1 SD across the cohort's models
-        const cx=bx+bw/2, yhi=y(b.val+b.std), ylo=y(Math.max(0,b.val-b.std)), cap=Math.min(5,bw/3), ec='#e7ebf3';
-        s.appendChild(svgEl('line', {x1:cx, y1:yhi, x2:cx, y2:ylo, stroke:ec, 'stroke-width':1.3}));
-        s.appendChild(svgEl('line', {x1:cx-cap, y1:yhi, x2:cx+cap, y2:yhi, stroke:ec, 'stroke-width':1.3}));
-        s.appendChild(svgEl('line', {x1:cx-cap, y1:ylo, x2:cx+cap, y2:ylo, stroke:ec, 'stroke-width':1.3}));
-      }
+      if (b.std>0) ccErrorBar(s, bx+bw/2, y(b.val+b.std), y(Math.max(0,b.val-b.std)), bw);
     });
     const lx = x0 + band/2, ly = PAD.t+plotH+12;
     const t = svgEl('text', {x:lx, y:ly, 'text-anchor':'end', 'font-size':10, class:'xlbl',
