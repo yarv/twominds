@@ -26,10 +26,16 @@ const DEFAULTS = { model:'__all__', family:'__all__', sort:'judge_ari', search:'
 let STATE = Object.assign({}, DEFAULTS);
 const openCards = new Set();   // cardKey of expanded bundles
 const openResps = new Set();   // respKey of expanded responses
+const openFrames = new Set();  // frameKey of columns showing their exact framing
 let focusKey = null;           // a card the chart pointed us at (highlight)
 
 const cardKey = (r)=> r.model + NUL + r.family;
 const respKey = (r,vi,i)=> cardKey(r) + NUL + vi + NUL + i;
+const frameKey = (r,vi)=> cardKey(r) + NUL + 'frame' + NUL + vi;
+
+// A framing that makes the model hedge commits few final-line answers; its %
+// then averages very few values and deserves a visible caution.
+const sparseCommit = (v)=> v.n_committed!=null && v.n_committed*2 < (v.n || (v.responses||[]).length);
 
 const STORE = stateStore(SKEY, DEFAULTS);
 const loadState = ()=> STORE.load();
@@ -90,8 +96,11 @@ function renderCard(r){
      + '<span class="tag fam">'+esc(r.family)+'</span>'
      + '<span class="dots">'+dots+'</span>'
      + '<span class="stats">'
-       + '<span>swing <span class="pill '+swingCls(kind,r.swing)+'">'+fmt(r.swing)+'</span></span>'
-       + '<span>judge ARI <span class="pill '+ariCls(j.ari)+'">'+fmt(j.ari)+'</span></span>'
+       + '<span>swing <span class="pill '+swingCls(kind,r.swing)+'" title="spread of the per-framing committed-answer means">'+fmt(r.swing)+'</span></span>'
+       + (r.variants.some(sparseCommit)
+          ? '<span class="pill g-amber" title="at least one framing committed a final answer in fewer than half its responses — its mean averages few answers; lean on the judge groups">sparse commits</span>'
+          : '')
+       + '<span>judge ARI <span class="pill '+ariCls(j.ari)+'" title="agreement between the blind judge\'s answer-groups and the framing labels: 0 = framing-invariant, 1 = answer follows the framing">'+fmt(j.ari)+'</span></span>'
        + '<span>cluster ARI <span class="pill '+ariCls((r.cluster||{}).ari)+'">'+fmt((r.cluster||{}).ari)+'</span></span>'
        + '<span>positions <b>'+(j.n_groups??'–')+'</b></span>'
      + '</span></div>';
@@ -132,9 +141,22 @@ function renderCard(r){
 }
 
 function renderColumn(r, v, vi){
+  const n = v.n || (v.responses||[]).length;
+  const commit = (v.n_committed==null)
+    ? 'n='+n
+    : '<span class="commit'+(sparseCommit(v)?' low':'')+'" title="answers whose final line committed a parseable answer — the '+esc(v.summary)+' is the mean over these '+v.n_committed+', not all '+n+'; hedged answers still count in the judge grouping">'+v.n_committed+'/'+n+' committed</span>';
+  const fk = frameKey(r, vi), fOpen = openFrames.has(fk);
   let h = '<div class="col"><div class="col-head">'
-    + '<span class="vname">'+esc(v.variant)+'</span>'
-    + '<span class="vsum">'+esc(v.summary)+' · n='+(v.responses||[]).length+'</span></div>';
+    + '<span class="vname" data-frame="'+esc(fk)+'" title="click to show this framing\'s exact prompt">'+esc(v.variant)+' '+(fOpen?'▾':'▸')+'</span>'
+    + '<span class="vsum">'+esc(v.summary)+' · '+commit+'</span>';
+  if (fOpen){
+    h += '<div class="frame">'
+      + (v.system ? '<div><b>system</b> '+esc(v.system)+'</div>' : '')
+      + (v.prompt ? '<div><b>prompt</b> '+esc(v.prompt)+'</div>' : '')
+      + ((!v.system && !v.prompt) ? '<div class="cav">prompt text not stored in this analysis — re-run analyze</div>' : '')
+      + '</div>';
+  }
+  h += '</div>';
   h += '<div class="col-body">';
   (v.responses||[]).forEach((text,i)=>{
     const rk = respKey(r,vi,i), open = openResps.has(rk);
@@ -156,11 +178,17 @@ function contingencyHtml(r){
   const j = r.judge||{};
   if (!j.contingency || !j.contingency.length) return '';
   const groups = j.group_ids || j.contingency[0].map((_,i)=>i);
-  let head = '<tr><th>variant \\ judge group</th>'+groups.map(g=>'<th><span class="box" style="background:'+gcolor(g)+'"></span> g'+g+'</th>').join('')+'</tr>';
+  const hasScalar = r.variants.some(v=>v.summary && v.summary!=='–');
+  let head = '<tr><th>variant \\ judge group</th>'+groups.map(g=>'<th><span class="box" style="background:'+gcolor(g)+'"></span> g'+g+'</th>').join('')
+    + (hasScalar ? '<th title="the framing\'s committed final-line answer (mean over k committed of n) — read it against the group split on the left">committed answer</th>' : '')
+    + '</tr>';
   let rows = '';
   r.variants.forEach((v,vi)=>{
     const cells = (j.contingency[vi]||[]).map(c=>'<td>'+(c||'')+'</td>').join('');
-    rows += '<tr><td class="v">'+esc(v.variant)+'</td>'+cells+'</tr>';
+    const sc = hasScalar
+      ? '<td class="sc'+(sparseCommit(v)?' low':'')+'">'+esc(v.summary)+(v.n_committed!=null?' <span class="k">('+v.n_committed+'/'+(v.n||(v.responses||[]).length)+')</span>':'')+'</td>'
+      : '';
+    rows += '<tr><td class="v">'+esc(v.variant)+'</td>'+cells+sc+'</tr>';
   });
   return '<table class="cont">'+head+rows+'</table>';
 }
@@ -367,6 +395,8 @@ function wire(){
   $('#reset').addEventListener('click', ()=>{ STATE=Object.assign({}, DEFAULTS); focusKey=null; openCards.clear(); openResps.clear();
     syncControls(); saveState(); chartControls(); drawChart(); render(); });
   $('#cards').addEventListener('click', (e)=>{
+    const vn = e.target.closest('.vname');
+    if (vn){ const k=vn.dataset.frame; openFrames.has(k)?openFrames.delete(k):openFrames.add(k); render(); return; }
     const rh = e.target.closest('.fresp-head');
     if (rh){ const k=rh.dataset.resp; openResps.has(k)?openResps.delete(k):openResps.add(k); render(); return; }
     const ch = e.target.closest('.card-head');

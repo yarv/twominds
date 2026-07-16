@@ -93,6 +93,7 @@ def build_fam(analysis: dict) -> dict:
     """Transform an ``analysis.json`` dict into the ``FAM`` blob the report reads."""
     fam_records = analysis.get("families") or []
     families_meta = analysis.get("families_meta") or {}
+    qmeta = analysis.get("questions") or {}
 
     # (model, qid) -> raw response texts, for the per-framing columns.
     resp_map = {
@@ -146,12 +147,22 @@ def build_fam(analysis: dict) -> dict:
                 groups_exact = False
                 row = contingency[vi] if vi < len(contingency) else None
                 groups = _recover_groups(row, group_ids, n)
+            q = qmeta.get(qid) or {}
             variants.append(
                 {
                     "variant": vlabel,
                     "qid": qid,
                     "n": n,
                     "summary": _variant_summary(kind, per_variant, vlabel),
+                    # the scalar mean is over answers that COMMITTED a parseable
+                    # final-line answer; surface that count so a mean of 2/20
+                    # never reads like 20/20 (hedged answers still count in the
+                    # judge grouping).
+                    "n_committed": per_variant.get(vlabel, {}).get("n_parsed"),
+                    # what actually varied between the columns — the framing can
+                    # live in the user prompt or the system prompt.
+                    "prompt": q.get("prompt", ""),
+                    "system": q.get("system"),
                     "responses": responses,
                     "groups": groups,
                 }
@@ -256,6 +267,32 @@ _LEGEND_RECOVERED = (
     "per-response colours.</div>"
 )
 
+_HOWTO = """
+<details class="howto"><summary>How to read this report</summary>
+<ul>
+<li><b>One card = one model × one family</b>: the same underlying question asked
+under several answer-irrelevant framings (the columns), N times each. Click a
+variant name to see that framing's exact prompt — the framing sometimes lives
+in the <i>system</i> prompt, so the visible question can be identical across
+columns.</li>
+<li><b>% yes / rating</b> is the mean of the answers that <b>committed</b> a
+parseable final-line answer — the <i>k/N committed</i> count next to it says how
+many that is. A framing that makes the model hedge can have very few committed
+answers, so a percentage over 2 of 20 is shown but should be read with care
+(it gets an amber count and a "sparse commits" tag on the card).</li>
+<li><b>Judge groups</b> come from a blind judge that reads <i>every</i> answer —
+hedged ones included — and groups them by the position they take. So the groups
+and the committed-answer % measure different things and can legitimately
+disagree: a column can be 100% "yes" among 2 committed answers while its 20
+full answers sit with the reassuring camp.</li>
+<li><b>swing</b> = spread of the per-framing committed-answer means (the
+Sharma-style sycophancy effect size, judge-free). <b>judge ARI</b> ≈ 0 means
+the judge's grouping ignores the framing (coherent); ≈ 1 means the framing
+determines the answer. The contingency table shows the split directly, with
+each framing's committed answer alongside.</li>
+</ul></details>
+"""
+
 
 def build_families_report(analysis: dict, out_path: Path) -> Path:
     out_path = Path(out_path)
@@ -271,6 +308,7 @@ def build_families_report(analysis: dict, out_path: Path) -> Path:
   <div class="dash" id="dash"></div>
   <div class="dash" style="margin-top:2px">{n_models} models · {n_fams} families · {n_bundles} bundles · run: {_esc(fam["run_dir"])} · judge: {_esc(fam["judge"])}</div>
   {_LEGEND}{_LEGEND_RECOVERED if recovered else ""}
+  {_HOWTO}
   <div class="controls">
     <label>model <select id="model"></select></label>
     <label>family <select id="family"></select></label>
