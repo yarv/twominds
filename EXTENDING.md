@@ -27,7 +27,7 @@ and an *identical* invariant core — only the framing sentence differs), plus a
 `families:` entry giving the neutral judge prompt and optional `scalar`. They
 belong in `questions/prompt_robustness/`. Select with `--families <id>`;
 results land in `families_report.html`. Logic: `families.py`; tests:
-`tests/test_variance_families.py`.
+`tests/test_families.py`.
 
 ## Add models
 
@@ -61,4 +61,4 @@ prompt change, sanity-check the judge against engineered ground truth:
 Per-bundle metrics are computed in `twominds/metrics.py` and flow
 into `analysis.json`; to surface one in the chart and the static PNG, add it
 to `METRICS` in `category_bars.py` (the interactive chart imports from there).
-Tests: `tests/test_variance_metrics.py`.
+Tests: `tests/test_metrics.py`.

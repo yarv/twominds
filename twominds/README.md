@@ -1,4 +1,4 @@
-# Response-variance / coherence experiment
+# TwoMinds — methods & reference
 
 Ask each model a fixed set of **free-form questions, N times each at
 temperature 1.0**, and study the *variance across re-samples* of one model on
@@ -255,7 +255,7 @@ Authoring a family: add K variant questions
 sharing one `family:` id (each with a `variant:` label and an *identical* invariant
 core — only the framing sentence differs), and a `families:` entry giving the
 neutral judge `prompt` + optional `scalar`. Logic in `families.py`; tests in
-`tests/test_variance_families.py`.
+`tests/test_families.py`.
 
 ## Model roster (`models.py`)
 
@@ -330,6 +330,6 @@ backend before drawing conclusions from cluster counts.
 
 ## Tests
 
-`tests/test_variance_{questions,models,judge,cluster,metrics,report}.py` — pure
+`tests/test_{questions,models,judge,cluster,metrics,report}.py` — pure
 logic (no network); API-dependent generation/judge/embeddings are exercised by the
 smoke run, not the unit tests.
