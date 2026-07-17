@@ -6,8 +6,6 @@
 
 [![CI](https://github.com/yarv/twominds/actions/workflows/ci.yml/badge.svg)](https://github.com/yarv/twominds/actions/workflows/ci.yml)
 
-<img src="docs/header_strip.png" alt="" width="100%">
-
 **Does your LLM agree with itself?** TwoMinds asks a model the same question
 N times at temperature 1.0 and measures whether the answers take the same
 position — within-model coherence evals for LLMs.
