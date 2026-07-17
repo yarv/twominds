@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="docs/logo.png" alt="TwoMinds logo: two overlapping speech bubbles" width="150">
+</p>
+
 # TwoMinds
 
 [![CI](https://github.com/yarv/twominds/actions/workflows/ci.yml/badge.svg)](https://github.com/yarv/twominds/actions/workflows/ci.yml)
+
+<img src="docs/header_strip.png" alt="" width="100%">
 
 **Does your LLM agree with itself?** TwoMinds asks a model the same question
 N times at temperature 1.0 and measures whether the answers take the same
@@ -265,3 +271,5 @@ and metrics.
 If you use TwoMinds, please cite it — see [CITATION.cff](CITATION.cff)
 (*"TwoMinds: within-model coherence evals for LLMs"*, v0.2.0). MIT license
 ([LICENSE](LICENSE)).
+
+*Logo and artwork generated with Google Gemini.*
