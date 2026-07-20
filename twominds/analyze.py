@@ -205,6 +205,7 @@ def _family_pass(
                 vrec["groups"] = per_var[vi]
             rec["judge"] = {
                 **align,
+                "group_names": jr.group_names,
                 "contradiction": jr.contradiction,
                 "rationale": jr.rationale,
                 "flags": jr.flags,
