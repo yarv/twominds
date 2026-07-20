@@ -18,10 +18,14 @@ hover tooltips and the Method tab's glossary, sourced from the single JS
   consistent questions, each linking to its answers.
 * **Answers** (id ``explorer``) — the full card browser. Cards (one per model x
   question) are collapsible; judged self-contradictions auto-expand (flagged
-  cards stay collapsed — flags can be plentiful judge side-notes). Controls: model / category / bucket / embedding-backend filters,
-  answer + card sorts, min-positions + min-clusters thresholds, free-text
-  search, flag filter, toggles, expand/collapse all, and a dashboard
-  summarising the filtered set.
+  cards stay collapsed — flags can be plentiful judge side-notes). Each card
+  header carries a composition strip (a tiny stacked bar of the judge's
+  position sizes); positions show the judge's 1-2 word group names where the
+  analysis has them. Controls: model / category / bucket / embedding-backend
+  filters, answer + card sorts, min-positions + min-clusters thresholds,
+  free-text search, flag-type filter, toggles, expand/collapse all, and a
+  dashboard summarising the filtered set. Flags are typed and may point at
+  specific answers (⚑ markers on the flagged rows).
 * **Method & setup** (id ``setup``) — what ran, how answers were collected,
   how consistency was scored, a glossary, cost, the question roster, and
   provenance.
@@ -159,10 +163,11 @@ function passes(r){
   if (STATE.onlyFlag && !(j.flags && j.flags.length)) return false;
   if ((j.n_groups||0) < STATE.minG) return false;
   if (EMB && nClusters(r) < STATE.minC) return false;
-  if (STATE.flag!=='__any__' && !((j.flags||[]).includes(STATE.flag))) return false;
+  if (STATE.flag!=='__any__' && !flagTypes(j.flags).includes(STATE.flag)) return false;
   if (STATE.search){
     const q = STATE.search.toLowerCase();
-    const hay = [].concat(r.responses||[], [j.rationale||''], j.flags||[],
+    const hay = [].concat(r.responses||[], [j.rationale||''], j.group_names||[],
+      (j.flags||[]).map(f=>{const nf=normFlag(f); return nf.type+' '+nf.note;}),
       [(DATA.questions[r.question_id]||{}).prompt||'']).join('\n').toLowerCase();
     if (!hay.includes(q)) return false;
   }
@@ -198,8 +203,21 @@ function renderCard(r){
   const ng = j.n_groups, nc = nClusters(r), div = divergence(r);
   let dots = '';
   if (j.contradiction) dots += '<span class="dot red" title="self-contradiction: two answers take incompatible positions"></span>';
-  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: the judge noted something unusual"></span>';
+  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: '+esc(flagTypes(j.flags).join(', '))+'"></span>';
   if (div >= 0.5 && (ng>1 || nc>1)) dots += '<span class="dot purple" title="the judge and the embedding cross-check disagree here — read with care"></span>';
+
+  // composition strip: how the answers split across the judge's positions —
+  // a split card reads at a glance even while collapsed
+  let strip = '';
+  const jl = r.judge_labels || [];
+  if (jl.length){
+    const counts = {}; jl.forEach(l=>counts[l]=(counts[l]||0)+1);
+    strip = '<span class="gstrip">'
+      + Object.keys(counts).map(Number).sort((a,b)=>a-b).map(l=>
+          '<i style="flex:'+counts[l]+' 1 0;background:'+color(l)+'" title="'
+          + esc(posName(j,l))+' — '+counts[l]+'/'+jl.length+' answers"></i>').join('')
+      + '</span>';
+  }
 
   let h = '<div class="card'+(isOpen?' open':'')+'">';
   h += '<div class="card-head" data-card="'+esc(key)+'">'
@@ -207,6 +225,7 @@ function renderCard(r){
      + '<span class="tag model">'+esc(r.model)+'</span>'
      + '<span class="tag group">'+esc(r.group)+'</span>'
      + '<span class="tag">'+esc(r.question_id)+'</span>'
+     + strip
      + '<span class="dots">'+dots+'</span>'
      + '<span class="stats">'
        + '<span>answers=<b>'+m.n+'</b></span>'
@@ -222,11 +241,13 @@ function renderCard(r){
     h += '<div class="q">'+esc((DATA.questions[r.question_id]||{}).prompt || r.question_id)+'</div>';
     if (j.rationale) h += '<div class="rationale">'+esc(j.rationale)+'</div>';
     if (j.flags && j.flags.length)
-      h += '<div class="flags">'+j.flags.map(f=>'<span class="flag '+(f==='judge_parse_failed'?'parsefail':'')+'">'+esc(f)+'</span>').join('')+'</div>';
-    // legend (judge positions present)
+      h += '<div class="flags">'+j.flags.map(flagChip).join('')+'</div>';
+    // legend (judge positions present), with the judge's group names + sizes
     if (ng){
+      const counts = {}; jl.forEach(l=>counts[l]=(counts[l]||0)+1);
       let leg = '';
-      for (let g=0; g<ng; g++) leg += '<span class="sw"><span class="box" style="background:'+color(g)+'"></span>position '+(g+1)+'</span>';
+      for (let g=0; g<ng; g++) leg += '<span class="sw"><span class="box" style="background:'+color(g)+'"></span>'
+        + esc(posName(j,g))+' · '+(counts[g]||0)+'</span>';
       h += '<div class="legend" title="'+esc(GLOSSARY.positions)+'">'+leg+'</div>';
     }
     h += '<div class="resp-actions"><a data-expand="'+esc(key)+'">expand all answers</a>'
@@ -240,9 +261,9 @@ function renderCard(r){
     for (const [i, label] of order){
       if (STATE.rsort!=='original' && label!==lastLabel){
         lastLabel = label;
-        const kind = STATE.rsort==='judge' ? 'Position' : 'Cluster';
+        const name = STATE.rsort==='judge' ? posName(j,label) : ('Cluster '+(label+1));
         h += '<div class="sep"><span class="box" style="background:'+color(label)+'"></span>'
-           + kind+' '+(label+1)+' — '+counts[label]+' answer'+(counts[label]===1?'':'s')+'</div>';
+           + esc(name)+' — '+counts[label]+' answer'+(counts[label]===1?'':'s')+'</div>';
       }
       h += renderResp(r, i);
     }
@@ -253,19 +274,23 @@ function renderCard(r){
 }
 
 function renderResp(r, i){
-  const text = r.responses[i] || '', rk = respKey(r,i), open = openResps.has(rk);
+  const text = r.responses[i] || '', rk = respKey(r,i), open = openResps.has(rk), j = r.judge||{};
   const jg = (r.judge_labels||[])[i] ?? -1;
   const cl = (((r.clusters||{})[STATE.backend]||{}).labels||[])[i] ?? -1;
   const snip = text.replace(/\s+/g,' ').slice(0,140);
+  const pos = jg<0 ? 'position (judge)' : posName(j,jg)+' (judge)';
+  // ⚑ marker on the exact answers a flag points at
+  const fl = (j.flags||[]).map(normFlag).filter(f=>f.responses.includes(i));
   let h = '<div class="resp" style="border-left-color:'+color(jg)+'">';
   h += '<div class="resp-head" data-resp="'+esc(rk)+'">'
      + '<span class="badge">#'+(i+1)+'</span>'
-     + '<span class="swatch" style="background:'+color(jg)+'" title="position (judge)"></span>'
+     + '<span class="swatch" style="background:'+color(jg)+'" title="'+esc(pos)+'"></span>'
      + (EMB
-        ? '<span class="badge" title="position (judge) · cluster (embeddings) · length">'
+        ? '<span class="badge" title="'+esc(pos)+' · cluster (embeddings) · length">'
           + (jg<0?'–':'p'+(jg+1))+' · '+(cl<0?'–':'c'+(cl+1))+' · '+text.length+'ch</span>'
-        : '<span class="badge" title="position (judge) · length">'
+        : '<span class="badge" title="'+esc(pos)+' · length">'
           + (jg<0?'–':'p'+(jg+1))+' · '+text.length+'ch</span>')
+     + (fl.length ? '<span class="fmark" title="'+esc(fl.map(f=>f.type+(f.note?': '+f.note:'')).join('\n'))+'">⚑</span>' : '')
      + (open ? '' : '<span class="snip">'+esc(snip)+'</span>')
      + '</div>';
   if (open) h += '<div class="full">'+esc(text)+'</div>';
@@ -690,14 +715,14 @@ function init(){
   const shown = DATA.results.filter(r=>!(DATA.questions[r.question_id]||{}).family);
   const groups = [...new Set(shown.map(r=>r.group))].filter(Boolean);
   const buckets = [...new Set(shown.map(r=>(DATA.questions[r.question_id]||{}).bucket))].filter(Boolean).sort();
-  const flags = [...new Set(DATA.results.flatMap(r=>(r.judge||{}).flags||[]))].sort();
+  const flags = [...new Set(DATA.results.flatMap(r=>flagTypes((r.judge||{}).flags)))].sort();
   opts('#model', DATA.models.slice(), true);
   opts('#mmodel', DATA.models.slice(), false);
   opts('#group', groups, true);
   opts('#bucket', buckets, true);
   opts('#backend', DATA.backends, false);
   $('#flagFilter').innerHTML = '';
-  $('#flagFilter').append(new Option('(any flag)', '__any__'));
+  $('#flagFilter').append(new Option('(any type)', '__any__'));
   flags.forEach(f=> $('#flagFilter').append(new Option(f, f)));
   if (!DATA.backends.includes(STATE.backend)) STATE.backend = DATA.primary_backend;
   if (!DATA.models.includes(STATE.model)) STATE.model = '__all__';
@@ -889,7 +914,7 @@ def build_report(analysis: dict, out_path: Path) -> Path:
       <label title="show only answer sets with at least this many distinct positions">min positions <input type="number" id="minGroups" min="1" value="1"></label>
       <label title="show only answer sets with at least this many embedding clusters">min clusters <input type="number" id="minClusters" min="1" value="1"></label>
       <label>search <input type="text" id="search" placeholder="text in answers/flags"></label>
-      <label>flag <select id="flagFilter"></select></label>
+      <label title="show only answer sets carrying a flag of this type">flag type <select id="flagFilter"></select></label>
       <label><input type="checkbox" id="onlyContra"> self-contradictions only</label>
       <label><input type="checkbox" id="onlyFlag"> flagged only</label>
       <button id="expandAll">expand all</button>

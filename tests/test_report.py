@@ -106,6 +106,24 @@ def test_report_has_enhanced_controls(tmp_path):
     assert "GLOSSARY" in html  # tooltip/glossary source of truth present
 
 
+def test_report_group_names_flags_and_strip(tmp_path):
+    analysis = _synthetic_analysis()
+    j = analysis["results"][0]["judge"]
+    j["group_names"] = ["assistant-framing"]
+    j["flags"] = [{"type": "striking-content", "responses": [1], "note": "odd claim"}]
+    out = R.build_report(analysis, tmp_path / "report.html")
+    html = out.read_text()
+    # judge-named groups + typed flags reach the data blob; the shared helpers
+    # (legacy-flag normalization, name fallback, flag chips) are inlined
+    assert "assistant-framing" in html and "striking-content" in html
+    for helper in ("normFlag", "posName", "flagChip", "flagTypes"):
+        assert helper in html, f"missing JS helper {helper}"
+    # per-card composition strip (markup class + CSS)
+    assert "gstrip" in html
+    # flag dropdown filters by type, not by exact flag string
+    assert "(any type)" in html
+
+
 def test_report_has_tabbed_layout(tmp_path):
     out = R.build_report(_synthetic_analysis(), tmp_path / "report.html")
     html = out.read_text()

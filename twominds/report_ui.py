@@ -128,8 +128,13 @@ button:hover { border-color:var(--accent); }
   overflow:auto; border-left:2px solid var(--line); padding-left:9px; }
 .rationale { font-size:12.5px; margin:8px 0; }
 .flags { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
-.flag { font-size:11px; padding:1px 8px; border-radius:10px; background:#3a2a2a; color:#ffb3b3; }
+.flag { font-size:11px; padding:1px 8px; border-radius:10px; background:#3a2a2a; color:#ffb3b3; cursor:help; }
+.flag b { color:#ffd0d0; font-weight:600; }
 .flag.parsefail { background:#3a3520; color:var(--amber); }
+
+/* per-card position composition strip (gaps let the surface separate segments) */
+.gstrip { display:flex; gap:2px; width:90px; height:8px; border-radius:4px; flex:none; }
+.gstrip i { display:block; height:100%; min-width:2px; border-radius:1px; }
 
 .sep { font-size:11px; color:var(--muted); margin:10px 0 4px; display:flex; gap:8px; align-items:center; }
 .sep .box { width:11px; height:11px; border-radius:3px; }
@@ -138,6 +143,7 @@ button:hover { border-color:var(--accent); }
 .resp-head:hover { background:#171b22; }
 .resp .badge { font-size:10.5px; color:var(--muted); font-family:ui-monospace,monospace; white-space:nowrap; }
 .resp .swatch { width:9px; height:9px; border-radius:2px; display:inline-block; }
+.resp .fmark { color:var(--amber); font-size:11px; cursor:help; flex:none; }
 .resp .snip { color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis;
   white-space:nowrap; flex:1; }
 .resp .full { white-space:pre-wrap; font-size:12.5px; padding:2px 12px 10px; }
@@ -167,6 +173,18 @@ const trunc = (s,n)=> (s&&s.length>n) ? s.slice(0,n-1)+'…' : (s||'');
 const entropyOf = (labels)=>{ if(!labels||!labels.length) return 0; const c={}; labels.forEach(l=>c[l]=(c[l]||0)+1);
   const n=labels.length; let h=0; for(const k in c){const p=c[k]/n; h-=p*Math.log(p);} return h; };
 const NUL = '\x1f';
+// Judge flags are {type, responses (0-based), note}; analyses that predate the
+// structured schema stored plain strings — normalize both to one shape.
+const normFlag = (f)=> (f && typeof f==='object')
+  ? {type:f.type||'other', responses:f.responses||[], note:f.note||''}
+  : {type:'other', responses:[], note:(f==null?'':String(f))};
+const flagTypes = (flags)=> [...new Set((flags||[]).map(f=>normFlag(f).type))];
+const flagChip = (f)=>{ const nf = normFlag(f);
+  const refs = nf.responses.length ? ' · '+nf.responses.map(i=>'#'+(i+1)).join(' ') : '';
+  return '<span class="flag'+(nf.type==='judge-error'?' parsefail':'')+'" title="'+esc(nf.note)+'">'
+    + '⚑ <b>'+esc(nf.type)+'</b>'+refs+(nf.note?': '+esc(trunc(nf.note,90)):'')+'</span>'; };
+// Judge-given group name, falling back to the positional label.
+const posName = (j,g)=> (((j||{}).group_names||[])[g]) || ('position '+(g+1));
 const mean = (xs)=> xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : 0;
 const pstd = (xs)=>{ if(xs.length<2) return 0; const m=mean(xs); return Math.sqrt(xs.reduce((s,x)=>s+(x-m)*(x-m),0)/xs.length); };
 const SVGNS = 'http://www.w3.org/2000/svg';
