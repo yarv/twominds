@@ -92,11 +92,24 @@ function renderCard(r){
   if (j.contradiction) dots += '<span class="dot red" title="pooled judge: contradiction"></span>';
   if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: '+esc(flagTypes(j.flags).join(', '))+'"></span>';
   const fmeta = FAM.families[r.family] || {};
+  // pooled-judge composition strip: group sizes from the contingency columns —
+  // a framing-driven split shows as multiple segments while the card is closed
+  let strip = '';
+  const cont = j.contingency||[], gids = j.group_ids||[];
+  if (cont.length && gids.length){
+    const total = cont.reduce((s,row)=>s+(row||[]).reduce((a,b)=>a+(b||0),0),0);
+    if (total) strip = '<span class="gstrip">'+gids.map((g,gi)=>{
+      const cnt = cont.reduce((s,row)=>s+((row||[])[gi]||0),0);
+      return cnt ? '<i style="flex:'+cnt+' 1 0;background:'+gcolor(g)+'" title="judge '
+        +esc(gname(j,g))+' — '+cnt+'/'+total+' pooled answers"></i>' : '';
+    }).join('')+'</span>';
+  }
   let h = '<div class="card'+(isOpen?' open':'')+(focusKey===key?' focus':'')+'" data-key="'+esc(key)+'">';
   h += '<div class="card-head" data-card="'+esc(key)+'">'
      + '<span class="chev">▶</span>'
      + '<span class="tag model">'+esc(r.model)+'</span>'
      + '<span class="tag fam">'+esc(r.family)+'</span>'
+     + strip
      + '<span class="dots">'+dots+'</span>'
      + '<span class="stats">'
        + '<span>swing <span class="pill '+swingCls(kind,r.swing)+'" title="spread of the per-framing committed-answer means">'+fmt(r.swing)+'</span></span>'
@@ -114,7 +127,8 @@ function renderCard(r){
     h += '<div class="takeaway"><div class="lab">pooled judge · saw all '+r.variants.length+' framings</div>';
     if (j.rationale) h += '<div class="rationale">'+esc(j.rationale)+'</div>';
     if (j.flags && j.flags.length)
-      h += '<div class="flags">'+j.flags.map(flagChip).join('')+'</div>';
+      h += '<div class="flags" title="answer numbers refer to the pooled (shuffled) order the judge saw">'
+         + j.flags.map(flagChip).join('')+'</div>';
     h += contingencyHtml(r) + '</div>';
     // group legend (if the judge labels were persisted, the columns are tinted)
     const ng = j.n_groups||0;
