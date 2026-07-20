@@ -156,6 +156,12 @@ JudgeRunOpt = typer.Option(
     "--judge-run",
     help="label to isolate this judge run under judge_runs/<label>/",
 )
+JudgePipelineOpt = typer.Option(
+    True,
+    "--judge-pipeline/--no-judge-pipeline",
+    help="judge each model's fragment in a background subprocess as soon as its "
+    "generation finishes, instead of waiting for the whole sweep (store runs only)",
+)
 
 
 def _resolve_backends(backends: List[str]) -> list[str]:

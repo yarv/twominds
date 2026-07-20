@@ -233,11 +233,17 @@ def _execute_generations(
     judge,
     model_concurrency=1,
     display="rich",
+    prewarm_judge=None,
 ):
     """Generate the missing models into their store gen dirs.
 
     The missing models still run as ONE Inspect eval (each model's logs land in
     its own store gen dir via ``log_dirs``, marked complete as they're written).
+
+    ``prewarm_judge`` (the judge config dict from ``run``) turns on background
+    per-model judging: as each model's generation task finishes, a subprocess
+    judges its store fragment while the other models keep generating. Returns
+    the set of models whose fragments were prewarmed (billed this invocation).
     """
     root = store_mod.store_root(_options._RESULTS_ROOT)
     for spec in to_generate:
@@ -252,19 +258,48 @@ def _execute_generations(
             max_tokens=max_tokens,
             judge=judge,
         )
-    generate_mod.run_generation(
-        to_generate,
-        qs,
-        n=n,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        display=display,
-        model_concurrency=model_concurrency,
-        log_dirs={
-            s.name: Path(gen_dirs[s.name]) / "logs" / s.name for s in to_generate
-        },
-        on_model_done=lambda name: store_mod.mark_complete(gen_dirs[name], key=gen_key),
-    )
+    log_dirs = {s.name: Path(gen_dirs[s.name]) / "logs" / s.name for s in to_generate}
+    prewarmer = None
+    if prewarm_judge:
+        from twominds import judge_pipeline
+
+        prewarmer = judge_pipeline.activate(
+            {
+                s.name: {"gen_dir": gen_dirs[s.name], "log_dir": log_dirs[s.name]}
+                for s in to_generate
+            },
+            prewarm_judge,
+        )
+    try:
+        generate_mod.run_generation(
+            to_generate,
+            qs,
+            n=n,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            display=display,
+            model_concurrency=model_concurrency,
+            log_dirs=log_dirs,
+            on_model_done=lambda name: store_mod.mark_complete(
+                gen_dirs[name], key=gen_key
+            ),
+            skip_log_write=prewarmer.log_written if prewarmer else None,
+        )
+    except BaseException:
+        if prewarmer is not None:
+            from twominds import judge_pipeline
+
+            judge_pipeline.deactivate(cancel=True)
+        raise
+    if prewarmer is None:
+        return set()
+    from twominds import judge_pipeline
+
+    typer.echo("waiting for background judge fragments to finish ...")
+    prewarmed = judge_pipeline.deactivate()
+    if prewarmed:
+        typer.echo("  prewarmed during generation: " + ", ".join(sorted(prewarmed)))
+    return prewarmed
 
 
 def _setup_store_run(
@@ -289,15 +324,19 @@ def _setup_store_run(
     backends=None,
     will_judge=True,
     judge_reps=1,
+    prewarm_judge=None,
 ):
     """Store-backed generation phase shared by `run` and `generate`: ensure
     per-model generations exist (reusing the store), then create the run dir
-    with symlinked logs. Returns (run_dir, specs, gen_dirs, cached_names);
-    (None, specs, gen_dirs, cached_names) on dry runs.
+    with symlinked logs. Returns (run_dir, specs, gen_dirs, cached_names,
+    prewarmed); (None, specs, gen_dirs, cached_names, set()) on dry runs.
 
     ``backends``/``will_judge`` only shape the printed plan: pass the resolved
     embedding backends (``run``) or leave None (``generate``), and set
     ``will_judge=False`` when no judge phase follows (its cost is then left out).
+    ``prewarm_judge`` (a judge config dict) makes generation judge each model's
+    store fragment in the background as its task finishes — see
+    ``judge_pipeline``; ``prewarmed`` names the fragments completed that way.
     """
     specs = resolve_models(_csv(models))
     qs = _select_questions(groups, ids, all_questions, families, roster, buckets)
@@ -334,12 +373,13 @@ def _setup_store_run(
     _announce_partition(cached, to_generate, gen_key, dry_run=dry_run)
     if dry_run:
         typer.echo("\n(dry run — no API calls made)")
-        return None, specs, gen_dirs, cached
+        return None, specs, gen_dirs, cached, set()
     if display == "rich" and not sys.stdout.isatty():
         display = "plain"
         typer.echo("(non-interactive stdout detected: using --display plain)")
+    prewarmed = set()
     if to_generate:
-        _execute_generations(
+        prewarmed = _execute_generations(
             to_generate,
             qs,
             gen_dirs,
@@ -350,6 +390,7 @@ def _setup_store_run(
             judge=judge,
             model_concurrency=model_concurrency,
             display=display,
+            prewarm_judge=prewarm_judge,
         )
     run_dir = Path(out) if out else _default_run_dir()
     generate_mod.write_manifest(
@@ -363,4 +404,4 @@ def _setup_store_run(
     )
     for spec in specs:
         store_mod.link_into_run(run_dir, spec, gen_dirs[spec.name])
-    return run_dir, specs, gen_dirs, cached
+    return run_dir, specs, gen_dirs, cached, prewarmed

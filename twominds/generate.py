@@ -170,6 +170,7 @@ def run_generation(
     model_concurrency: int = 1,
     log_dirs: Optional[dict[str, Path]] = None,
     on_model_done: Optional[callable] = None,
+    skip_log_write: Optional[callable] = None,
 ) -> dict[str, str]:
     """Run the whole generation sweep in one Inspect call. Returns {model: log_dir}.
 
@@ -201,6 +202,10 @@ def run_generation(
     ``RuntimeError`` naming every failed model is raised at the end — an errored
     log holds cancelled samples with empty completions, which would otherwise flow
     silently into the judge as "responses".
+
+    ``skip_log_write(name)`` -> True skips writing that model's logs here: the
+    judge-prewarm hook already wrote them (atomically) at task end, and a
+    rewrite could race the background judge reading them.
     """
     import tempfile
 
@@ -256,8 +261,13 @@ def run_generation(
         else:
             model_log_dir = logs_root / safe
         model_log_dir.mkdir(parents=True, exist_ok=True)
-        write_eval_log(log, str(model_log_dir / f"{safe}.eval"), format="eval")
-        write_eval_log(log, str(model_log_dir / f"{safe}.json"), format="json")
+        if not (
+            skip_log_write
+            and skip_log_write(spec.name)
+            and (model_log_dir / f"{safe}.eval").exists()
+        ):
+            write_eval_log(log, str(model_log_dir / f"{safe}.eval"), format="eval")
+            write_eval_log(log, str(model_log_dir / f"{safe}.json"), format="json")
         out[spec.name] = str(model_log_dir)
         if log.status != "success":
             # the error's .message is the upstream API error; str(log.error)

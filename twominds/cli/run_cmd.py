@@ -21,6 +21,7 @@ from ._options import (
     GroupsOpt,
     IdsOpt,
     JudgeOpt,
+    JudgePipelineOpt,
     JudgeReasonOpt,
     LocalModelOpt,
     MaxTokOpt,
@@ -92,7 +93,7 @@ def generate(
             will_judge=False,
         )
         return
-    run_dir, _specs, _gen_dirs, _cached = _setup_store_run(
+    run_dir, _specs, _gen_dirs, _cached, _prewarmed = _setup_store_run(
         models,
         groups,
         ids,
@@ -137,6 +138,7 @@ def run(
     concurrency: int = ConcurrencyOpt,
     reps: int = RepsOpt,
     no_consistency: bool = NoConsistencyOpt,
+    judge_pipeline: bool = JudgePipelineOpt,
     out: Optional[str] = typer.Option(None, "--out", "-o", help="run dir"),
     display: str = DisplayOpt,
     no_judge: bool = typer.Option(False, "--no-judge", help="skip the LLM judge"),
@@ -200,7 +202,31 @@ def run(
         typer.echo(f"\nDone. Open {run_dir / 'report.html'}")
         return
 
-    run_dir, specs, gen_dirs, cached_gens = _setup_store_run(
+    # rep1 fragments are keyed by the judge config; computed up front so the
+    # generation phase can prewarm them in the background (judge_pipeline).
+    judge_key = store_mod.compute_judge_key(
+        judge_name=judge,
+        judge_reasoning=judge_reasoning,
+        threshold=threshold,
+        backends=list(backends),
+        local_model=local_model,
+        run_judge=not no_judge,
+    )
+    prewarm_cfg = (
+        {
+            "judge_key": judge_key,
+            "backends": list(backends),
+            "judge_name": judge,
+            "judge_reasoning": judge_reasoning,
+            "threshold": threshold,
+            "local_model": local_model,
+            "concurrency": concurrency,
+            "run_judge": True,
+        }
+        if judge_pipeline and not no_judge
+        else None
+    )
+    run_dir, specs, gen_dirs, cached_gens, prewarmed = _setup_store_run(
         models,
         groups,
         ids,
@@ -221,19 +247,12 @@ def run(
         backends=list(backends),
         will_judge=not no_judge,
         judge_reps=reps if not no_judge else 1,
+        prewarm_judge=prewarm_cfg,
     )
     if run_dir is None:  # dry run
         return
 
-    # rep1: cached per-model judge fragments where fresh, judged now otherwise.
-    judge_key = store_mod.compute_judge_key(
-        judge_name=judge,
-        judge_reasoning=judge_reasoning,
-        threshold=threshold,
-        backends=list(backends),
-        local_model=local_model,
-        run_judge=not no_judge,
-    )
+    _FRAG_MARKS = {"cached": "cached ✓", "prewarmed": "prewarmed ✔", "judged": "✔"}
     combined = store_mod.assemble_run(
         run_dir,
         specs,
@@ -246,8 +265,9 @@ def run(
         local_model=local_model,
         concurrency=concurrency,
         run_judge=not no_judge,
-        on_fragment=lambda name, cached: typer.echo(
-            f"  [judge {'cached ✓' if cached else '✔'}] {name}"
+        prewarmed=prewarmed,
+        on_fragment=lambda name, status: typer.echo(
+            f"  [judge {_FRAG_MARKS.get(status, status)}] {name}"
         ),
         # rep2..N judge the whole run and read run_dir/cache — seed it from the
         # fragments' per-model caches so they don't re-embed everything.
