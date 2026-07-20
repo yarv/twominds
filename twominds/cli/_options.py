@@ -94,10 +94,11 @@ NOpt = typer.Option(20, "--n", "-n", help="samples per question")
 TempOpt = typer.Option(1.0, "--temperature", "-t", help="sampling temperature")
 MaxTokOpt = typer.Option(2048, "--max-tokens", help="max output tokens per response")
 ModelConcurrencyOpt = typer.Option(
-    1,
+    2,
     "--model-concurrency",
-    help="how many models generate at once (Inspect max_tasks; default 1 = one at "
-    "a time, but each model is still internally concurrent across its samples). "
+    help="how many models generate at once (Inspect max_tasks; each model is also "
+    "internally concurrent across its samples). Default 2 overlaps one model's "
+    "slow-straggler tail with the next model's bulk; 1 = strictly one at a time. "
     "Effective API concurrency is ~model_concurrency × max_connections, so watch "
     "provider rate limits / OpenRouter budget; 3-4 is a sane same-provider ceiling.",
 )
