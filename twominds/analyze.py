@@ -31,12 +31,41 @@ def _judge_display() -> str:
     return "rich" if sys.stdout.isatty() else "plain"
 
 
+def _responses_from_analysis(run_dir: Path) -> dict[str, dict[str, list[str]]]:
+    """Rebuild the response bundles from a prior ``analysis.json``.
+
+    The analysis stores every response verbatim, so a re-judge doesn't need the
+    raw eval logs — they may be gone (the store prunes generations as
+    regenerable, leaving the run's ``logs/`` symlinks dangling).
+    """
+    path = Path(run_dir) / "analysis.json"
+    if not path.exists():
+        return {}
+    out: dict[str, dict[str, list[str]]] = {}
+    for r in json.loads(path.read_text()).get("results", []):
+        out.setdefault(r["model"], {})[r["question_id"]] = list(
+            r.get("responses") or []
+        )
+    return out
+
+
 def load_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
-    """{model_name: {question_id: [response, ...]}} from the per-model .eval logs."""
+    """{model_name: {question_id: [response, ...]}} from the per-model .eval logs.
+
+    Falls back to the run's ``analysis.json`` when the logs yield nothing.
+    """
     from inspect_ai.log import list_eval_logs, read_eval_log
 
     logs_root = Path(run_dir) / "logs"
     if not logs_root.exists():
+        fallback = _responses_from_analysis(run_dir)
+        if fallback:
+            print(
+                f"note: no logs dir at {logs_root}; "
+                "re-judging the responses stored in analysis.json",
+                flush=True,
+            )
+            return fallback
         raise FileNotFoundError(f"no logs dir at {logs_root}; run generation first")
 
     # Each model's eval log is written as ``<spec.name>.eval``. Key by the log
@@ -64,6 +93,21 @@ def load_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
                 completion = sample.output.completion or ""
             qmap.setdefault(qid, []).append(completion)
         out[label] = qmap
+    if not any(out.values()):
+        # logs dir present but no readable eval logs — e.g. the store pruned the
+        # generations this run's logs/ symlinks point at
+        fallback = _responses_from_analysis(run_dir)
+        if fallback:
+            print(
+                f"note: no eval logs under {logs_root} (dangling store symlinks?); "
+                "re-judging the responses stored in analysis.json",
+                flush=True,
+            )
+            return fallback
+        raise FileNotFoundError(
+            f"no eval logs under {logs_root} and no analysis.json to re-judge from; "
+            "run generation first"
+        )
     return out
 
 

@@ -58,6 +58,39 @@ def test_run_generation_roundtrips_through_load_responses(tmp_path):
             assert all(responses[name][qid])  # non-empty completions
 
 
+def test_load_responses_falls_back_to_analysis_json(tmp_path):
+    """A run whose logs are gone (store pruned the generations the run's logs/
+    symlinks point at) can still be re-judged: the responses live verbatim in
+    analysis.json."""
+    import json
+
+    import pytest
+
+    run_dir = tmp_path / "run"
+    (run_dir / "logs" / "mock-a").mkdir(parents=True)  # present but empty
+    (run_dir / "analysis.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"model": "mock-a", "question_id": "q1", "responses": ["r1", "r2"]},
+                    {"model": "mock-a", "question_id": "q2", "responses": ["r3"]},
+                ]
+            }
+        )
+    )
+    assert A.load_responses(run_dir) == {"mock-a": {"q1": ["r1", "r2"], "q2": ["r3"]}}
+
+    # same fallback when logs/ is missing entirely
+    (run_dir / "logs" / "mock-a").rmdir()
+    (run_dir / "logs").rmdir()
+    assert A.load_responses(run_dir)["mock-a"]["q1"] == ["r1", "r2"]
+
+    # nothing to fall back to -> explicit error, not a silent 0-bundle pass
+    (run_dir / "analysis.json").unlink()
+    with pytest.raises(FileNotFoundError):
+        A.load_responses(run_dir)
+
+
 def test_slash_in_model_name_does_not_collapse_models(tmp_path):
     """Regression: two specs whose names share a leading path component via a slash
     (what a bare ``ours/<x>`` CLI arg produced) must stay distinct — not collapse
