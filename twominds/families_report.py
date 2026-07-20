@@ -181,6 +181,7 @@ def build_fam(analysis: dict) -> dict:
                     "ari": ari,
                     "nmi": judge.get("nmi"),
                     "n_groups": judge.get("n_groups"),
+                    "group_names": judge.get("group_names") or [],
                     "contingency": contingency,
                     "group_ids": group_ids,
                     "contradiction": judge.get("contradiction"),

@@ -1,7 +1,9 @@
 // Helper primitives ($, PALETTE, esc, fmt, NUL, svgEl, elh, mean, pstd, gcolor,
-// ccYAxis, ccErrorBar, stateStore) come from report_ui.BASE_JS, loaded first.
+// normFlag, flagChip, flagTypes, stateStore) come from report_ui.BASE_JS, loaded first.
 const cidx = {}; FAM.models.forEach((m,i)=> cidx[m]=i);
 const mcolor = (m)=> PALETTE[(cidx[m]||0) % PALETTE.length];
+// judge-given group name; this report numbers groups g0/g1/... (matrix ids)
+const gname = (j,g)=> (((j||{}).group_names||[])[g]) || ('g'+g);
 
 // Cohorts: fine-tuned vs base/frontier models (classified server-side).
 const COHORTS = ['finetuned','base'];
@@ -56,7 +58,8 @@ function passes(r){
   if (STATE.search){
     const q = STATE.search.toLowerCase();
     const hay = [r.model, r.family, (r.judge||{}).rationale||'',
-      ...((r.judge||{}).flags||[]),
+      ...((r.judge||{}).group_names||[]),
+      ...((r.judge||{}).flags||[]).map(f=>{const nf=normFlag(f); return nf.type+' '+nf.note;}),
       ...r.variants.flatMap(v=>v.responses||[])].join('\n').toLowerCase();
     if (!hay.includes(q)) return false;
   }
@@ -87,13 +90,26 @@ function renderCard(r){
   const key = cardKey(r), isOpen = openCards.has(key), j = r.judge||{}, kind = r.scalar_kind;
   let dots = '';
   if (j.contradiction) dots += '<span class="dot red" title="pooled judge: contradiction"></span>';
-  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged"></span>';
+  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: '+esc(flagTypes(j.flags).join(', '))+'"></span>';
   const fmeta = FAM.families[r.family] || {};
+  // pooled-judge composition strip: group sizes from the contingency columns —
+  // a framing-driven split shows as multiple segments while the card is closed
+  let strip = '';
+  const cont = j.contingency||[], gids = j.group_ids||[];
+  if (cont.length && gids.length){
+    const total = cont.reduce((s,row)=>s+(row||[]).reduce((a,b)=>a+(b||0),0),0);
+    if (total) strip = '<span class="gstrip">'+gids.map((g,gi)=>{
+      const cnt = cont.reduce((s,row)=>s+((row||[])[gi]||0),0);
+      return cnt ? '<i style="flex:'+cnt+' 1 0;background:'+gcolor(g)+'" title="judge '
+        +esc(gname(j,g))+' — '+cnt+'/'+total+' pooled answers"></i>' : '';
+    }).join('')+'</span>';
+  }
   let h = '<div class="card'+(isOpen?' open':'')+(focusKey===key?' focus':'')+'" data-key="'+esc(key)+'">';
   h += '<div class="card-head" data-card="'+esc(key)+'">'
      + '<span class="chev">▶</span>'
      + '<span class="tag model">'+esc(r.model)+'</span>'
      + '<span class="tag fam">'+esc(r.family)+'</span>'
+     + strip
      + '<span class="dots">'+dots+'</span>'
      + '<span class="stats">'
        + '<span>swing <span class="pill '+swingCls(kind,r.swing)+'" title="spread of the per-framing committed-answer means">'+fmt(r.swing)+'</span></span>'
@@ -111,7 +127,8 @@ function renderCard(r){
     h += '<div class="takeaway"><div class="lab">pooled judge · saw all '+r.variants.length+' framings</div>';
     if (j.rationale) h += '<div class="rationale">'+esc(j.rationale)+'</div>';
     if (j.flags && j.flags.length)
-      h += '<div class="flags">'+j.flags.map(f=>'<span class="flag">'+esc(f)+'</span>').join('')+'</div>';
+      h += '<div class="flags" title="answer numbers refer to the pooled (shuffled) order the judge saw">'
+         + j.flags.map(flagChip).join('')+'</div>';
     h += contingencyHtml(r) + '</div>';
     // group legend (if the judge labels were persisted, the columns are tinted)
     const ng = j.n_groups||0;
@@ -122,7 +139,7 @@ function renderCard(r){
       for (let gi=0; gi<ng; gi++){
         const g = gids[gi] ?? gi;
         const cnt = cont.reduce((s,row)=>s+((row||[])[gi]||0), 0);
-        leg += '<span class="sw"><span class="box" style="background:'+gcolor(g)+'"></span>judge g'+g+(cnt?' · '+cnt:'')+'</span>';
+        leg += '<span class="sw"><span class="box" style="background:'+gcolor(g)+'"></span>judge '+esc(gname(j,g))+(cnt?' · '+cnt:'')+'</span>';
       }
       leg += '<span class="cav">'+(r.groups_exact
         ? 'response tints are exact per response'
@@ -179,7 +196,7 @@ function contingencyHtml(r){
   if (!j.contingency || !j.contingency.length) return '';
   const groups = j.group_ids || j.contingency[0].map((_,i)=>i);
   const hasScalar = r.variants.some(v=>v.summary && v.summary!=='–');
-  let head = '<tr><th>variant \\ judge group</th>'+groups.map(g=>'<th><span class="box" style="background:'+gcolor(g)+'"></span> g'+g+'</th>').join('')
+  let head = '<tr><th>variant \\ judge group</th>'+groups.map(g=>'<th><span class="box" style="background:'+gcolor(g)+'"></span> '+esc(gname(j,g))+'</th>').join('')
     + (hasScalar ? '<th title="the framing\'s committed final-line answer (mean over k committed of n) — read it against the group split on the left">committed answer</th>' : '')
     + '</tr>';
   let rows = '';

@@ -43,6 +43,7 @@ def build_view_data(runs: dict[str, dict], agg: dict) -> dict:
             per_run[lab] = {
                 "labels": jl,
                 "n_groups": j.get("n_groups"),
+                "group_names": j.get("group_names") or [],
                 "contradiction": bool(j.get("contradiction")),
                 "rationale": j.get("rationale", ""),
                 "flags": j.get("flags") or [],
@@ -124,8 +125,13 @@ function renderResp(b,i,mode){
         +'<span class="stab" title="placement stability '+fmt(stab)+'"><i style="width:'+Math.round(stab*100)+'%;background:'+grade(stab)+'"></i></span>'
         +drift;
   } else {
-    const g=(b.per_run[mode].labels||[])[i]??-1; border=gcolor(g);
-    badge='<span class="badge">#'+(i+1)+'</span><span class="swatch" style="background:'+gcolor(g)+'"></span><span class="badge">g'+g+'</span>';
+    const pr=b.per_run[mode];
+    const g=(pr.labels||[])[i]??-1; border=gcolor(g);
+    const fl=(pr.flags||[]).map(normFlag).filter(f=>f.responses.includes(i));
+    badge='<span class="badge">#'+(i+1)+'</span>'
+      +'<span class="swatch" style="background:'+gcolor(g)+'" title="'+(g<0?'':esc(posName(pr,g)))+'"></span>'
+      +'<span class="badge">'+(g<0?'–':'p'+(g+1))+'</span>'
+      +(fl.length?'<span class="fmark" title="'+esc(fl.map(f=>f.type+(f.note?': '+f.note:'')).join('\n'))+'">⚑</span>':'');
   }
   let h='<div class="resp" style="border-left-color:'+border+'"><div class="resp-head" data-resp="'+esc(key)+'">'+badge
       +(open?'':'<span class="snip">'+esc(snip)+'</span>')+'</div>';
@@ -139,8 +145,8 @@ function renderResponses(b,labels,mode){
   let h='', last;
   for(const [i,l] of order){
     if(l!==last){ last=l;
-      const kind = mode==='consensus' ? 'Consensus group' : 'Group';
-      h+='<div class="sep"><span class="box" style="background:'+gcolor(l)+'"></span>'+kind+' '+l+' — '+counts[l]+'</div>';
+      const name = mode==='consensus' ? ('Consensus group '+(l+1)) : posName(b.per_run[mode], l);
+      h+='<div class="sep"><span class="box" style="background:'+gcolor(l)+'"></span>'+esc(name)+' — '+counts[l]+'</div>';
     }
     h+=renderResp(b,i,mode);
   }
@@ -196,7 +202,7 @@ function renderCard(b){
   } else {
     const pr=b.per_run[view];
     if(pr.rationale) body+='<div class="rationale">'+esc(pr.rationale)+'</div>';
-    if(pr.flags&&pr.flags.length) body+='<div class="flags">'+pr.flags.map(f=>'<span class="flag">'+esc(f)+'</span>').join('')+'</div>';
+    if(pr.flags&&pr.flags.length) body+='<div class="flags">'+pr.flags.map(flagChip).join('')+'</div>';
     body+=renderResponses(b,pr.labels,view);
   }
   return head+body+'</div></div>';

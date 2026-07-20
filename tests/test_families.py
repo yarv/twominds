@@ -288,6 +288,10 @@ def test_families_report_renders(tmp_path):
     assert "gpt-4o" in htmltext
     assert "6.50" in htmltext  # swing in the noscript fallback table
     assert "judge ARI" in htmltext  # inlined renderer
+    # UI parity with the main report: composition strip + shared flag helpers
+    assert "gstrip" in htmltext
+    for helper in ("normFlag", "flagChip", "gname"):
+        assert helper in htmltext, helper
 
 
 def test_groups_by_variant_maps_pool_labels_back():
