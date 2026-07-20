@@ -21,6 +21,7 @@ from ._options import (
     GroupsOpt,
     IdsOpt,
     JudgeOpt,
+    JudgePipelineOpt,
     JudgeReasonOpt,
     LocalModelOpt,
     MaxTokOpt,
@@ -137,6 +138,7 @@ def run(
     concurrency: int = ConcurrencyOpt,
     reps: int = RepsOpt,
     no_consistency: bool = NoConsistencyOpt,
+    judge_pipeline: bool = JudgePipelineOpt,
     out: Optional[str] = typer.Option(None, "--out", "-o", help="run dir"),
     display: str = DisplayOpt,
     no_judge: bool = typer.Option(False, "--no-judge", help="skip the LLM judge"),
@@ -161,6 +163,18 @@ def run(
     backends = _resolve_backends(backends)
     if not backends and no_judge:
         raise typer.BadParameter("-b none with --no-judge leaves nothing to analyze")
+    # Fuse the judge into the generation eval (per-sample scorer): each question
+    # is judged as its answers land, in the sweep's own display, and the judge
+    # phase below harvests the verdicts from the logs instead of re-judging.
+    judge_inline = (
+        {
+            "judge_name": judge,
+            "judge_reasoning": judge_reasoning,
+            "max_connections": concurrency,
+        }
+        if judge_pipeline and not no_judge
+        else None
+    )
     if no_store:
         run_dir = _do_generate(
             models,
@@ -181,6 +195,7 @@ def run(
             backends=list(backends),
             will_judge=not no_judge,
             judge_reps=reps if not no_judge else 1,
+            judge_inline=judge_inline,
         )
         if run_dir is None:  # dry run
             return
@@ -221,11 +236,13 @@ def run(
         backends=list(backends),
         will_judge=not no_judge,
         judge_reps=reps if not no_judge else 1,
+        judge_inline=judge_inline,
     )
     if run_dir is None:  # dry run
         return
 
-    # rep1: cached per-model judge fragments where fresh, judged now otherwise.
+    # rep1: cached per-model judge fragments where fresh, judged now otherwise
+    # (fresh fragments of a fused generation harvest their in-log verdicts).
     judge_key = store_mod.compute_judge_key(
         judge_name=judge,
         judge_reasoning=judge_reasoning,
@@ -246,8 +263,8 @@ def run(
         local_model=local_model,
         concurrency=concurrency,
         run_judge=not no_judge,
-        on_fragment=lambda name, cached: typer.echo(
-            f"  [judge {'cached ✓' if cached else '✔'}] {name}"
+        on_fragment=lambda name, status: typer.echo(
+            f"  [judge {'cached ✓' if status == 'cached' else '✔'}] {name}"
         ),
         # rep2..N judge the whole run and read run_dir/cache — seed it from the
         # fragments' per-model caches so they don't re-embed everything.

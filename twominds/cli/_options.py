@@ -157,6 +157,14 @@ JudgeRunOpt = typer.Option(
     "--judge-run",
     help="label to isolate this judge run under judge_runs/<label>/",
 )
+JudgePipelineOpt = typer.Option(
+    True,
+    "--judge-pipeline/--no-judge-pipeline",
+    help="judge inline during generation: each question is scored by the judge "
+    "the moment its N answers are in (same Inspect display/eval), and the judge "
+    "phase reuses those verdicts; --no-judge-pipeline restores the separate "
+    "judge-after-generation phase",
+)
 
 
 def _resolve_backends(backends: List[str]) -> list[str]:

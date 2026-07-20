@@ -363,9 +363,12 @@ def assemble_run(
 
     Only models without a fresh fragment for ``judge_key`` are judged; the
     cross-model step is pure concatenation (``merge_analysis_dicts``), so cached
-    models cost nothing. ``on_fragment(model_name, was_cached)`` is a progress
-    hook. ``preseed_cache`` copies the fragments' per-model embedding caches
-    into the run-level cache so later whole-run judge reps reuse them.
+    models cost nothing. A "judged now" fragment of a fused generation costs
+    (almost) nothing too: its analyze harvests the verdicts the inline judge
+    scorer already wrote into the generation log. ``on_fragment(model_name,
+    status)`` is a progress hook (status: "cached" | "judged").
+    ``preseed_cache`` copies the fragments' per-model embedding caches into the
+    run-level cache so later whole-run judge reps reuse them.
     """
     from . import analyze as analyze_mod
     from . import cost as cost_mod
@@ -377,8 +380,8 @@ def assemble_run(
     for spec in specs:
         gd = Path(gen_dirs[spec.name])
         frag = find_fragment(gd, spec.name, judge_key)
-        cached = frag is not None
-        frag_cached.append(cached)
+        status = "cached" if frag is not None else "judged"
+        frag_cached.append(status == "cached")
         if frag is None:
             frag = analyze_mod.analyze(
                 gd,
@@ -398,7 +401,7 @@ def assemble_run(
             write_fragment_meta(gd, spec.name, judge_key)
         _link_judge_logs(run_dir, spec.name, fragment_dir(gd, judge_key))
         if on_fragment is not None:
-            on_fragment(spec.name, cached)
+            on_fragment(spec.name, status)
         frags.append(frag)
 
     combined = merge_mod.merge_analysis_dicts(

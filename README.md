@@ -98,9 +98,11 @@ uv run twominds analyze  -r results/twominds/run1
 uv run twominds report   -r results/twominds/run1
 ```
 
-One caveat: standalone `analyze` always judges fresh (only `run` reuses
-cached judge verdicts) — `analyze --dry-run` shows what that would cost
-before you pay it.
+One caveat: standalone `analyze` judges fresh unless the run's logs already
+carry inline verdicts for the exact same judge config (runs made by `run`,
+which judges during generation) — and repeat passes (`--judge-run`) always
+judge fresh, since they exist to measure judge stability. `analyze --dry-run`
+shows what a pass would cost before you pay it.
 
 Big sweeps: `--model-concurrency K` lets K models generate at once (default
 2, which overlaps one model's slow-straggler tail with the next model's bulk;

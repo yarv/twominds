@@ -272,6 +272,60 @@ def _fallback(n: int, raw: str) -> JudgeResult:
     )
 
 
+def judge_identity(judge_name: str, reasoning_effort: Optional[str]) -> dict:
+    """What makes two judge verdicts comparable: model, effort, prompt version.
+
+    Stamped into fused-generation score metadata so a later ``analyze`` only
+    harvests in-log verdicts produced by the exact judge config it was asked
+    to run."""
+    return {
+        "name": judge_name,
+        "reasoning": reasoning_effort,
+        "prompt_hash": PROMPT_HASH,
+    }
+
+
+async def judge_bundle(
+    model, question: str, responses: list[str], *, max_response_chars: int = 8000
+) -> JudgeResult:
+    """One cross-sample verdict as a plain awaitable — the fused-generation
+    scorer path (the judge runs inside the generation eval, so it cannot be an
+    eval of its own). Same prompt, 2-attempt parse-retry, fallback, and token
+    accounting as :func:`run_judge_eval`."""
+    from inspect_ai.model import ChatMessageAssistant, ChatMessageUser
+
+    n = len(responses)
+    prompt = _JUDGE_INSTRUCTIONS.format(
+        question=question,
+        n=n,
+        responses=_format_responses(responses, max_response_chars),
+        flag_types=", ".join(t for t in FLAG_TYPES),
+    )
+    messages: list = [ChatMessageUser(content=prompt)]
+    in_tok = out_tok = 0
+    raw = ""
+    parsed: Optional[JudgeResult] = None
+    for _attempt in range(2):
+        out = await model.generate(messages)
+        raw = out.completion or ""
+        if out.usage is not None:
+            in_tok += out.usage.input_tokens or 0
+            out_tok += out.usage.output_tokens or 0
+        obj = _extract_json(raw)
+        parsed = _parse(obj, n) if obj is not None else None
+        if parsed is not None:
+            break
+        messages += [
+            ChatMessageAssistant(content=raw),
+            ChatMessageUser(content=_RETRY_NOTE.format(n=n)),
+        ]
+    if parsed is None:
+        parsed = _fallback(n, raw)
+    parsed.raw = raw
+    parsed.input_tokens, parsed.output_tokens = in_tok, out_tok
+    return parsed
+
+
 def get_judge_model(
     name: str = DEFAULT_JUDGE,
     reasoning_effort: Optional[str] = DEFAULT_JUDGE_REASONING,

@@ -39,6 +39,7 @@ def _do_generate(
     backends=None,
     will_judge=True,
     judge_reps=1,
+    judge_inline=None,
 ):
     """The --no-store generation path: straight into the run dir, no reuse."""
     specs = resolve_models(_csv(models))
@@ -93,6 +94,7 @@ def _do_generate(
         run_dir=run_dir,
         display=display,
         model_concurrency=model_concurrency,
+        judge_inline=judge_inline,
     )
     typer.echo(f"Generation complete: {run_dir}")
     return run_dir
@@ -233,11 +235,15 @@ def _execute_generations(
     judge,
     model_concurrency=1,
     display="rich",
+    judge_inline=None,
 ):
     """Generate the missing models into their store gen dirs.
 
     The missing models still run as ONE Inspect eval (each model's logs land in
     its own store gen dir via ``log_dirs``, marked complete as they're written).
+    ``judge_inline`` (kwargs of ``generate.inline_judge_scorer``) fuses the
+    cross-sample judge into that eval as a per-sample scorer — each question is
+    judged the moment its answers are in, inside the sweep's own display.
     """
     root = store_mod.store_root(_options._RESULTS_ROOT)
     for spec in to_generate:
@@ -264,6 +270,7 @@ def _execute_generations(
             s.name: Path(gen_dirs[s.name]) / "logs" / s.name for s in to_generate
         },
         on_model_done=lambda name: store_mod.mark_complete(gen_dirs[name], key=gen_key),
+        judge_inline=judge_inline,
     )
 
 
@@ -289,6 +296,7 @@ def _setup_store_run(
     backends=None,
     will_judge=True,
     judge_reps=1,
+    judge_inline=None,
 ):
     """Store-backed generation phase shared by `run` and `generate`: ensure
     per-model generations exist (reusing the store), then create the run dir
@@ -298,6 +306,9 @@ def _setup_store_run(
     ``backends``/``will_judge`` only shape the printed plan: pass the resolved
     embedding backends (``run``) or leave None (``generate``), and set
     ``will_judge=False`` when no judge phase follows (its cost is then left out).
+    ``judge_inline`` fuses the cross-sample judge into the generation eval as a
+    per-sample scorer (see ``generate.inline_judge_scorer``); the fragment
+    phase then harvests those verdicts instead of re-judging.
     """
     specs = resolve_models(_csv(models))
     qs = _select_questions(groups, ids, all_questions, families, roster, buckets)
@@ -350,6 +361,7 @@ def _setup_store_run(
             judge=judge,
             model_concurrency=model_concurrency,
             display=display,
+            judge_inline=judge_inline,
         )
     run_dir = Path(out) if out else _default_run_dir()
     generate_mod.write_manifest(

@@ -280,10 +280,10 @@ def test_assemble_run_uses_cached_fragment_and_judges_missing(tmp_path, monkeypa
         local_model="lm",
         concurrency=1,
         run_judge=False,
-        on_fragment=lambda name, cached: events.append((name, cached)),
+        on_fragment=lambda name, status: events.append((name, status)),
     )
     assert judged == ["mock-b"]  # cached fragment skipped the judge
-    assert events == [("mock-a", True), ("mock-b", False)]
+    assert events == [("mock-a", "cached"), ("mock-b", "judged")]
     assert sorted(combined["models"]) == ["mock-a", "mock-b"]
     assert combined["model_display"]["mock-b"] == "display/mock-b"
     assert json.loads((run_dir / "analysis.json").read_text())["models"] == [
