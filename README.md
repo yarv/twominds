@@ -103,9 +103,10 @@ cached judge verdicts) — `analyze --dry-run` shows what that would cost
 before you pay it.
 
 Big sweeps: `--model-concurrency K` lets K models generate at once (default
-1; each model is still internally concurrent across its samples). Effective
+2, which overlaps one model's slow-straggler tail with the next model's bulk;
+each model is also internally concurrent across its samples). Effective
 API concurrency is roughly K × max_connections, so mind provider rate
-limits — 3–4 is a sane same-provider ceiling.
+limits — 3–4 is a sane same-provider ceiling, `1` is strictly serial.
 
 Something crash? Re-run with `TWOMINDS_DEBUG=1` for a full traceback instead
 of the one-line error.

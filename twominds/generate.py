@@ -134,6 +134,7 @@ def _build_models(
     temperature: float,
     max_tokens: int,
     timeout: int,
+    attempt_timeout: int,
     max_connections: Optional[int],
 ):
     """One Inspect ``Model`` per spec, carrying its temperature / reasoning effort."""
@@ -141,7 +142,9 @@ def _build_models(
 
     models = []
     for spec in model_specs:
-        cfg = GenerateConfig(max_tokens=max_tokens, timeout=timeout)
+        cfg = GenerateConfig(
+            max_tokens=max_tokens, timeout=timeout, attempt_timeout=attempt_timeout
+        )
         if spec.reasoning_effort in (None, "none", "minimal"):
             cfg.temperature = temperature
         # else: reasoning models pin temperature to 1 internally — which is the
@@ -166,8 +169,9 @@ def run_generation(
     display: str = "rich",
     retry_on_error: int = 2,
     max_connections: Optional[int] = None,
-    timeout: int = 180,
-    model_concurrency: int = 1,
+    timeout: int = 300,
+    attempt_timeout: int = 120,
+    model_concurrency: int = 2,
     log_dirs: Optional[dict[str, Path]] = None,
     on_model_done: Optional[callable] = None,
 ) -> dict[str, str]:
@@ -178,14 +182,20 @@ def run_generation(
     in the console) — Inspect schedules them concurrently in one process with its
     own connection pool and one shared progress display, so there is no process
     pool, no display juggling, and no racing. ``model_concurrency`` maps straight to Inspect's ``max_tasks`` (how many
-    models run at once; 1 = one at a time, but each model is still internally
-    concurrent across its N×Q samples). Effective API concurrency is
-    ~``model_concurrency × max_connections`` — mind provider rate limits.
+    models run at once; each model is also internally concurrent across its N×Q
+    samples). The default of 2 overlaps one model's straggler tail with the next
+    model's bulk — with 1, every model's last few slow samples serialize into
+    dead time. Effective API concurrency is ~``model_concurrency ×
+    max_connections`` — mind provider rate limits (Inspect's adaptive
+    concurrency backs off on 429s).
 
-    ``timeout`` caps each request (seconds): without it a single hung HTTP call
-    blocks on the OpenAI client default (~10 min) before ``retry_on_error`` can
-    retry it, freezing the sweep on the last straggler sample. 180s is ample for
-    these short answers even on the reasoning rungs.
+    ``attempt_timeout`` caps each request *attempt* (seconds): a hung HTTP call
+    is abandoned at 120s and retried immediately inside the same request, instead
+    of burning the whole request budget and failing out to a sample-level
+    ``retry_on_error`` restart (which is what made a sweep's last straggler
+    samples take many minutes each). ``timeout`` caps the entire request
+    including those retries; 300s leaves room for 2+ attempts while still
+    bounding a truly stuck sample.
 
     ``eval`` returns one ``EvalLog`` per model in model order; each is written to
     ``logs/<spec.name>/<spec.name>.{eval,json}`` (``.eval`` canonical for
@@ -222,6 +232,7 @@ def run_generation(
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=timeout,
+        attempt_timeout=attempt_timeout,
         max_connections=max_connections,
     )
     # One task per rung, each pinned to its configured model and named after
