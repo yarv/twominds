@@ -110,7 +110,9 @@ def test_from_dict_normalizes_legacy_string_flags():
 
 def test_flag_text_tolerates_both_shapes():
     assert J.flag_text("legacy") == "legacy"
-    assert J.flag_text({"type": "refusal", "responses": [0], "note": "n"}) == "refusal n"
+    assert (
+        J.flag_text({"type": "refusal", "responses": [0], "note": "n"}) == "refusal n"
+    )
 
 
 # --- run_judge_eval (Inspect-native judge) -------------------------------------

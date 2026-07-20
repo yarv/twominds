@@ -45,7 +45,7 @@ import yaml
 from . import cluster as cluster_mod
 from .analyze import load_responses
 from .generate import run_generation
-from .judge import JudgeResult, run_judge_eval
+from .judge import JudgeResult, flag_text, run_judge_eval
 from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_REASONING, resolve_model
 from .questions import Question
 
@@ -357,7 +357,7 @@ def score_bundle(
     axis_detected: Optional[bool] = None
     axis_terms: list[str] = []
     if axis_keywords and n_true >= 2:
-        blob = (jr.rationale + " " + " ".join(jr.flags)).lower()
+        blob = (jr.rationale + " " + " ".join(flag_text(f) for f in jr.flags)).lower()
         axis_terms = [kw for kw in axis_keywords if kw in blob]
         axis_detected = bool(axis_terms)
 
@@ -825,7 +825,7 @@ def build_stress_report(analysis: dict, out_path: Path) -> Path:
             )
         j = r["judge"]
         flags = (
-            f'<div class="flags">flags: {_esc(", ".join(j["flags"]))}</div>'
+            f'<div class="flags">flags: {_esc(", ".join(flag_text(f) for f in j["flags"]))}</div>'
             if j.get("flags")
             else ""
         )
