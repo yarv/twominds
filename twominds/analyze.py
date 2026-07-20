@@ -49,12 +49,41 @@ def _responses_from_analysis(run_dir: Path) -> dict[str, dict[str, list[str]]]:
     return out
 
 
+def _eval_logs_by_label(run_dir: Path) -> dict[str, str]:
+    """label -> eval-log path for a run's per-model logs.
+
+    Each model's eval log is written as ``<spec.name>.eval``. Key by the log
+    file's *stem* (spec.name's leaf), not the directory name: a model whose
+    name contains a ``/`` (e.g. a bare ``ours/<x>`` CLI arg) lands in nested
+    dirs (``logs/ours/<x>/ours/<x>.eval``), and keying by the top-level dir
+    would collapse every such model into one ``ours`` bucket. ``.``-prefixed
+    dirs (Inspect's ``.raw`` scratch) are skipped. Last log per stem wins
+    (≈ most recent re-run)."""
+    from inspect_ai.log import list_eval_logs
+
+    logs_root = Path(run_dir) / "logs"
+    chosen: dict[str, str] = {}
+    if not logs_root.exists():
+        return chosen
+    for model_dir in sorted(
+        p for p in logs_root.iterdir() if p.is_dir() and not p.name.startswith(".")
+    ):
+        for info in list_eval_logs(str(model_dir)):
+            chosen[Path(info.name).stem] = info.name
+    return chosen
+
+
 def load_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
     """{model_name: {question_id: [response, ...]}} from the per-model .eval logs.
 
-    Falls back to the run's ``analysis.json`` when the logs yield nothing.
+    Reads both log shapes — fused (one sample per question, its N responses in
+    the sample store; judge-inline runs) and legacy epochs (one sample instance
+    per response). Falls back to the run's ``analysis.json`` when the logs
+    yield nothing.
     """
-    from inspect_ai.log import list_eval_logs, read_eval_log
+    from inspect_ai.log import read_eval_log
+
+    from .generate import GEN_RESPONSES_KEY
 
     logs_root = Path(run_dir) / "logs"
     if not logs_root.exists():
@@ -68,26 +97,16 @@ def load_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
             return fallback
         raise FileNotFoundError(f"no logs dir at {logs_root}; run generation first")
 
-    # Each model's eval log is written as ``<spec.name>.eval``. Key by the log
-    # file's *stem* (spec.name's leaf), not the directory name: a model whose
-    # name contains a ``/`` (e.g. a bare ``ours/<x>`` CLI arg) lands in nested
-    # dirs (``logs/ours/<x>/ours/<x>.eval``), and keying by the top-level dir
-    # would collapse every such model into one ``ours`` bucket. ``.``-prefixed
-    # dirs (Inspect's ``.raw`` scratch) are skipped. Last log per stem wins
-    # (≈ most recent re-run).
-    chosen: dict[str, str] = {}  # label -> eval-log path
-    for model_dir in sorted(
-        p for p in logs_root.iterdir() if p.is_dir() and not p.name.startswith(".")
-    ):
-        for info in list_eval_logs(str(model_dir)):
-            chosen[Path(info.name).stem] = info.name
-
     out: dict[str, dict[str, list[str]]] = {}
-    for label, log_path in sorted(chosen.items()):
+    for label, log_path in sorted(_eval_logs_by_label(run_dir).items()):
         log = read_eval_log(log_path)
         qmap: dict[str, list[str]] = {}
         for sample in log.samples or []:
             qid = str(sample.id)
+            fused = (sample.store or {}).get(GEN_RESPONSES_KEY)
+            if fused:
+                qmap[qid] = [str(x or "") for x in fused]
+                continue
             completion = ""
             if sample.output is not None:
                 completion = sample.output.completion or ""
@@ -108,6 +127,33 @@ def load_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
             f"no eval logs under {logs_root} and no analysis.json to re-judge from; "
             "run generation first"
         )
+    return out
+
+
+def load_judge_scores(
+    run_dir: Path, judge_name: str, judge_reasoning: Optional[str]
+) -> dict[tuple[str, str], JudgeResult]:
+    """{(model, question_id): JudgeResult} harvested from fused generation logs.
+
+    Only verdicts whose stamped identity (judge model, reasoning effort, judge
+    prompt hash) matches the requested config are returned — anything else
+    (legacy logs, a different judge, an edited judge prompt) yields nothing
+    for that sample and gets judged fresh."""
+    from inspect_ai.log import read_eval_log
+
+    from .judge import judge_identity
+
+    want = judge_identity(judge_name, judge_reasoning)
+    out: dict[tuple[str, str], JudgeResult] = {}
+    for label, log_path in sorted(_eval_logs_by_label(run_dir).items()):
+        log = read_eval_log(log_path)
+        for sample in log.samples or []:
+            for score in (sample.scores or {}).values():
+                meta = getattr(score, "metadata", None) or {}
+                if meta.get("judge_identity") == want and "judge_result" in meta:
+                    out[(label, str(sample.id))] = JudgeResult.from_dict(
+                        meta["judge_result"]
+                    )
     return out
 
 
@@ -395,17 +441,35 @@ def analyze(
         for qid, resps in responses[model_name].items():
             bundles.append((model_name, qid, resps))
 
-    # --- judge (cross-sample) — one Inspect eval, bundles as samples ---
+    # --- judge (cross-sample) — harvested from fused generation logs where the
+    # verdicts already exist for this exact judge config, judged fresh otherwise
+    # (one Inspect eval, bundles as samples). Repeat passes (judge_run set)
+    # never harvest: they exist to measure judge stability, so they must call
+    # the judge again.
     judge_results: dict[tuple[str, str], JudgeResult] = {}
     or_before = or_after = None  # OpenRouter usage snapshots (judge spend delta)
     if run_judge:
+        harvested: dict[tuple[str, str], JudgeResult] = {}
+        if judge_run is None:
+            in_log = load_judge_scores(run_dir, judge_name, judge_reasoning)
+            harvested = {
+                (m, qid): in_log[(m, qid)]
+                for (m, qid, _resps) in bundles
+                if (m, qid) in in_log and not qmeta.get(qid, {}).get("family")
+            }
+            if harvested:
+                print(
+                    f"reusing {len(harvested)} judge verdict(s) from the "
+                    "generation logs (judged inline during the sweep)",
+                    flush=True,
+                )
         # Family variants are judged ACROSS variants by the pooled family judge;
         # a within-variant verdict is never displayed anywhere, so skip the
         # per-question judge for them (~40% of judge calls on the default sweep).
         judge_items = [
             ((m, qid), qmeta.get(qid, {}).get("prompt", qid), resps)
             for (m, qid, resps) in bundles
-            if not qmeta.get(qid, {}).get("family")
+            if not qmeta.get(qid, {}).get("family") and (m, qid) not in harvested
         ]
         or_before = cost_mod.openrouter_usage()
         judge_results, _ = run_judge_eval(
@@ -417,6 +481,7 @@ def analyze(
             display=_judge_display(),
         )
         or_after = cost_mod.openrouter_usage()
+        judge_results.update(harvested)
 
     # --- embeddings + clustering (cached per backend; reused across judge runs) ---
     embeds = _embed_all(

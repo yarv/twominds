@@ -108,8 +108,14 @@ def generation_usage(run_dir: Path) -> dict[str, dict]:
     for label, log_path in sorted(chosen.items()):
         it = ot = 0
         mid = label
-        mu = read_eval_log(log_path).stats.model_usage or {}
+        log = read_eval_log(log_path)
+        mu = log.stats.model_usage or {}
+        gen_model = getattr(getattr(log, "eval", None), "model", None)
         for k, u in mu.items():
+            # fused logs also carry the inline judge's usage — that spend is
+            # accounted in the judge cost record, not here
+            if gen_model and k != gen_model:
+                continue
             mid = k
             it += getattr(u, "input_tokens", 0) or 0
             ot += getattr(u, "output_tokens", 0) or 0

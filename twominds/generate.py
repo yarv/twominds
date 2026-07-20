@@ -26,12 +26,109 @@ from .questions import Question
 load_dotenv()
 
 
-def build_task(questions: list[Question], name: str = "twominds", model=None):
+# Store key for the fused-sample response list (one sample = one question,
+# its N generations fanned out inside the solver).
+GEN_RESPONSES_KEY = "twominds:responses"
+
+
+def _fanout_solver(n: int):
+    """Generate N independent samples of the question inside ONE sample, so a
+    per-sample scorer (the cross-sample judge) sees all N answers together."""
+    from inspect_ai.solver import solver
+
+    @solver
+    def _solve():
+        async def solve(state, generate):
+            import anyio
+
+            from inspect_ai.model import get_model
+
+            model = get_model()  # the task's pinned generation model
+            results: list = [None] * n
+
+            async def one(i: int):
+                out = await model.generate(state.input)
+                results[i] = out.completion or ""
+
+            async with anyio.create_task_group() as tg:
+                for i in range(n):
+                    tg.start_soon(one, i)
+            state.store.set(GEN_RESPONSES_KEY, results)
+            state.output.completion = results[0] or ""
+            return state
+
+        return solve
+
+    return _solve()
+
+
+def inline_judge_scorer(
+    judge_name: str,
+    judge_reasoning,
+    *,
+    max_connections: int = 6,
+    max_response_chars: int = 8000,
+):
+    """The cross-sample judge as an Inspect scorer on fused samples.
+
+    Runs the moment a question's N answers are in — inside the generation
+    eval, so judge progress, retries, and token usage all live in the one
+    Inspect display/log. Family variants are skipped (they are judged pooled
+    across variants in analyze; a within-variant verdict is never shown).
+    Score metadata carries the verdict + the judge identity so ``analyze``
+    can harvest matching verdicts instead of re-judging.
+    """
+    from inspect_ai.scorer import Score, mean, scorer
+
+    from .judge import get_judge_model, judge_bundle, judge_identity
+
+    identity = judge_identity(judge_name, judge_reasoning)
+
+    @scorer(metrics=[mean()])
+    def twominds_judge():
+        model = get_judge_model(
+            judge_name, judge_reasoning, max_connections=max_connections
+        )
+
+        async def score(state, target):
+            meta = state.metadata or {}
+            if meta.get("family"):
+                return Score(value=0.0, answer="(family variant: judged pooled)")
+            responses = state.store.get(GEN_RESPONSES_KEY) or []
+            jr = await judge_bundle(
+                model,
+                meta.get("prompt") or state.input_text,
+                responses,
+                max_response_chars=max_response_chars,
+            )
+            return Score(
+                value=1.0 if jr.contradiction else 0.0,
+                answer=jr.rationale[:200],
+                metadata={"judge_result": jr.to_dict(), "judge_identity": identity},
+            )
+
+        return score
+
+    return twominds_judge()
+
+
+def build_task(
+    questions: list[Question],
+    name: str = "twominds",
+    model=None,
+    n_per_sample: Optional[int] = None,
+    judge_scorer=None,
+):
     """Build an Inspect Task: the questions as samples + a bare generate() solver.
 
     ``model`` pins the task to one configured model, so a multi-rung sweep can
     name each task after its rung — two rungs sharing an underlying model id
-    (gpt-5.2 vs gpt-5.2-thinking) are then distinguishable in the console."""
+    (gpt-5.2 vs gpt-5.2-thinking) are then distinguishable in the console.
+
+    ``n_per_sample`` switches to the fused shape: one sample per question with
+    the N generations fanned out inside the solver (instead of Inspect epochs),
+    which is what lets ``judge_scorer`` — the cross-sample judge — run as a
+    normal per-sample scorer, overlapped with the rest of the generation."""
     from inspect_ai import Task
     from inspect_ai.dataset import MemoryDataset, Sample
     from inspect_ai.model import ChatMessageSystem, ChatMessageUser
@@ -46,10 +143,20 @@ def build_task(questions: list[Question], name: str = "twominds", model=None):
             ]
         else:
             inp = q.prompt
-        samples.append(Sample(input=inp, id=q.id, metadata={"group": q.group}))
+        samples.append(
+            Sample(
+                input=inp,
+                id=q.id,
+                metadata={"group": q.group, "prompt": q.prompt, "family": q.family},
+            )
+        )
 
     return Task(
-        dataset=MemoryDataset(samples), solver=generate(), name=name, model=model
+        dataset=MemoryDataset(samples),
+        solver=_fanout_solver(n_per_sample) if n_per_sample else generate(),
+        scorer=judge_scorer,
+        name=name,
+        model=model,
     )
 
 
@@ -174,6 +281,7 @@ def run_generation(
     model_concurrency: int = 2,
     log_dirs: Optional[dict[str, Path]] = None,
     on_model_done: Optional[callable] = None,
+    judge_inline: Optional[dict] = None,
 ) -> dict[str, str]:
     """Run the whole generation sweep in one Inspect call. Returns {model: log_dir}.
 
@@ -211,6 +319,13 @@ def run_generation(
     ``RuntimeError`` naming every failed model is raised at the end — an errored
     log holds cancelled samples with empty completions, which would otherwise flow
     silently into the judge as "responses".
+
+    ``judge_inline`` (kwargs of :func:`inline_judge_scorer`) fuses the judge
+    into the sweep: samples switch to one-per-question with the N generations
+    fanned out in-solver, and the cross-sample judge runs as that sample's
+    scorer the moment its answers are in — judge progress and usage share the
+    sweep's Inspect display, and ``analyze`` later harvests the verdicts from
+    the logs instead of re-judging.
     """
     import tempfile
 
@@ -238,18 +353,26 @@ def run_generation(
     # One task per rung, each pinned to its configured model and named after
     # the spec — so console panels distinguish two rungs that share one
     # underlying model id (gpt-5.2 vs gpt-5.2-thinking). Still ONE eval call.
+    # One shared scorer instance keeps the judge on one connection pool.
+    scorer = inline_judge_scorer(**judge_inline) if judge_inline else None
     tasks = [
-        build_task(questions, name=f"twominds:{spec.name}", model=model)
+        build_task(
+            questions,
+            name=f"twominds:{spec.name}",
+            model=model,
+            n_per_sample=n if judge_inline else None,
+            judge_scorer=scorer,
+        )
         for spec, model in zip(model_specs, models)
     ]
     logs = inspect_eval(
         tasks,
-        epochs=n,
+        epochs=1 if judge_inline else n,
         log_dir=str(raw_dir),
         log_format="eval",
         display=display,
         retry_on_error=retry_on_error,
-        score=False,
+        score=judge_inline is not None,
         max_tasks=max(1, model_concurrency),
     )
     if len(logs) != len(model_specs):  # eval returns one log per task, in order

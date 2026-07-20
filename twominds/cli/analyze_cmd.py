@@ -61,8 +61,10 @@ def analyze(
     judge_runs/<label>/ (embeddings cached, so reps are cheap); `consistency`
     then aggregates across all judge runs.
 
-    Note: standalone analyze always judges fresh. Only `run` reuses the
-    per-model judge verdicts cached in the store (`[judge cached ✓]`).
+    Note: the default pass reuses verdicts the inline judge wrote into the
+    generation logs (same judge config only); anything else — other configs,
+    legacy logs, and every --judge-run repeat pass — judges fresh. `run` also
+    reuses the per-model judge fragments cached in the store (`[judge cached ✓]`).
     """
     backends = _resolve_backends(backends)
     if not backends and no_judge:
