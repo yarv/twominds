@@ -33,6 +33,28 @@ bundle = one model's N answers to one question, the unit every judge verdict
 and variance metric attaches to. Each model's log and each judge pass are
 written in both `.eval` (canonical) and `.json` (human-readable) form.
 
+### Concurrency
+
+The three user-facing knobs map straight to Inspect settings:
+
+- `--model-concurrency` → `max_tasks` on the generation eval. Default 3: the
+  default roster is 3 models, and running them together overlaps each model's
+  slow-straggler tail with the others' bulk (with 1, every model's last few
+  slow samples serialize into dead time).
+- `--max-connections` → each generation model's
+  `GenerateConfig.max_connections`. Default `None` = the provider default
+  (~10 for OpenAI) — raising it silently would change rate-limit exposure,
+  so it is opt-in.
+- `--judge-concurrency` → the judge model's `max_connections`
+  (`models.DEFAULT_JUDGE_CONCURRENCY`, 16). Inspect's `max_samples` defaults
+  to `max_connections`, so this single knob also caps in-flight judge
+  bundles. `--concurrency` is the pre-0.3 alias.
+
+OpenAI embedding batches fan out on a small thread pool inside `embed.py`.
+Repeat judge passes (`--reps`) stay deliberately serial: each rep brackets
+its judge eval with OpenRouter usage snapshots to attribute real spend per
+rep, which concurrent reps would corrupt.
+
 ## Module map
 
 CLI (`cli/`) — one module per command group, assembled in `__init__.py`
