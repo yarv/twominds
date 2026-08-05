@@ -285,7 +285,10 @@ def run_generation(
     max_tokens: int = 2048,
     run_dir: Optional[Path] = None,
     display: str = "rich",
-    retry_on_error: int = 2,
+    # 5, not 2: one flaky sample exhausting its retries fails the whole task
+    # (and kills a chained multi-model sweep), so give transient API errors
+    # room to clear.
+    retry_on_error: int = 5,
     max_connections: Optional[int] = None,
     timeout: int = 300,
     attempt_timeout: int = 120,
