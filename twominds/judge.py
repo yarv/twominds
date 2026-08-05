@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_REASONING
+from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 # Controlled flag vocabulary; "judge-error" is reserved for the parse-failure
 # fallback and never offered to the judge.
@@ -423,7 +423,7 @@ def run_judge_eval(
     *,
     judge_name: str = DEFAULT_JUDGE,
     reasoning_effort: Optional[str] = DEFAULT_JUDGE_REASONING,
-    max_connections: int = 6,
+    max_connections: int = DEFAULT_JUDGE_CONCURRENCY,
     log_path=None,
     display: str = "plain",
     max_response_chars: int = 8000,

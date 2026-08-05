@@ -97,6 +97,36 @@ def test_generate_dry_run_omits_judge_cost(keyless):
     assert "judge:" not in result.output
 
 
+def test_judge_concurrency_flag_and_old_alias(keyless):
+    base = ["run", "--dry-run", "--groups", "values", "--models", "gpt-4.1", "--n", "3"]
+    for flag in ("--judge-concurrency", "--concurrency"):  # --concurrency: pre-0.3 name
+        result = runner.invoke(VE.app, base + [flag, "4"])
+        assert result.exit_code == 0, _out(result)
+
+
+def test_max_connections_shown_in_parallelism_echo(keyless):
+    result = runner.invoke(
+        VE.app,
+        [
+            "run",
+            "--dry-run",
+            "--groups",
+            "values",
+            "--models",
+            "gpt-4.1",
+            "--n",
+            "3",
+            "--max-connections",
+            "20",
+            "--model-concurrency",
+            "3",
+        ],
+    )
+    assert result.exit_code == 0, _out(result)
+    assert "up to 3 models at a time" in result.output
+    assert "20 connections per model" in result.output
+
+
 def test_run_dry_run_reports_cached_models(keyless):
     qs = _selected(groups=["values"])
     root = S.store_root(cli_options._RESULTS_ROOT)

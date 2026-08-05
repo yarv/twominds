@@ -23,7 +23,7 @@ from . import families as families_mod
 from . import metrics as metrics_mod
 from .embed import DEFAULT_LOCAL_MODEL, get_embedder
 from .judge import JudgeResult, run_judge_eval
-from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_REASONING
+from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 
 def _judge_display() -> str:
@@ -390,7 +390,7 @@ def analyze(
     judge_reasoning: Optional[str] = DEFAULT_JUDGE_REASONING,
     threshold: float = cluster_mod.DEFAULT_THRESHOLD,
     local_model: str = DEFAULT_LOCAL_MODEL,
-    concurrency: int = 6,
+    concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
     run_judge: bool = True,
     judge_run: Optional[str] = None,
     refresh_embeddings: bool = False,

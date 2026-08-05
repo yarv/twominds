@@ -141,6 +141,9 @@ HOTMESS_MODELS = ["claude-sonnet-4", "o3-mini", "o4-mini"]
 # Default judge: latest thinking Claude via OpenRouter at low effort.
 DEFAULT_JUDGE = "openrouter/anthropic/claude-opus-4.8"
 DEFAULT_JUDGE_REASONING = "low"
+# Concurrent judge calls (the judge model's Inspect max_connections; Inspect's
+# max_samples follows it, so this one knob caps in-flight judge bundles).
+DEFAULT_JUDGE_CONCURRENCY = 16
 
 
 def _load_keys() -> dict[str, str]:

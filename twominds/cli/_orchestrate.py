@@ -36,6 +36,7 @@ def _do_generate(
     roster=None,
     buckets=None,
     model_concurrency=1,
+    max_connections=None,
     backends=None,
     will_judge=True,
     judge_reps=1,
@@ -52,11 +53,7 @@ def _do_generate(
         plan_mod.format_plan(plan, specs, qs, backends=backends, judge_reps=judge_reps)
     )
     _warn_missing_keys(specs, judge if will_judge else None, backends)
-    if model_concurrency > 1:
-        typer.echo(
-            f"parallelism: up to {model_concurrency} models at a time "
-            f"(Inspect max_tasks; ~{model_concurrency}× max_connections in flight)"
-        )
+    _echo_parallelism(model_concurrency, max_connections)
     if dry_run:
         bal = cost_mod.openrouter_balance()
         if bal and bal.get("limit") is not None:
@@ -94,10 +91,22 @@ def _do_generate(
         run_dir=run_dir,
         display=display,
         model_concurrency=model_concurrency,
+        max_connections=max_connections,
         judge_inline=judge_inline,
     )
     typer.echo(f"Generation complete: {run_dir}")
     return run_dir
+
+
+def _echo_parallelism(model_concurrency, max_connections):
+    """Echo the effective-parallelism summary when any knob is non-trivial."""
+    if model_concurrency <= 1 and max_connections is None:
+        return
+    per_model = f"{max_connections}" if max_connections else "provider-default"
+    typer.echo(
+        f"parallelism: up to {model_concurrency} models at a time "
+        f"(Inspect max_tasks) × {per_model} connections per model"
+    )
 
 
 def _announce_partition(cached, to_generate, gen_key, *, dry_run=False):
@@ -234,6 +243,7 @@ def _execute_generations(
     max_tokens,
     judge,
     model_concurrency=1,
+    max_connections=None,
     display="rich",
     judge_inline=None,
 ):
@@ -266,6 +276,7 @@ def _execute_generations(
         max_tokens=max_tokens,
         display=display,
         model_concurrency=model_concurrency,
+        max_connections=max_connections,
         log_dirs={
             s.name: Path(gen_dirs[s.name]) / "logs" / s.name for s in to_generate
         },
@@ -290,6 +301,7 @@ def _setup_store_run(
     out,
     display,
     model_concurrency,
+    max_connections=None,
     rerun,
     rerun_models,
     dry_run,
@@ -343,6 +355,8 @@ def _setup_store_run(
         backends,
     )
     _announce_partition(cached, to_generate, gen_key, dry_run=dry_run)
+    if to_generate:
+        _echo_parallelism(model_concurrency, max_connections)
     if dry_run:
         typer.echo("\n(dry run — no API calls made)")
         return None, specs, gen_dirs, cached
@@ -360,6 +374,7 @@ def _setup_store_run(
             max_tokens=max_tokens,
             judge=judge,
             model_concurrency=model_concurrency,
+            max_connections=max_connections,
             display=display,
             judge_inline=judge_inline,
         )

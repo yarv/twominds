@@ -12,6 +12,7 @@ product and cosine distance is ``1 - dot``.
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Protocol
 
 import numpy as np
@@ -90,6 +91,7 @@ class OpenAIEmbedder:
             self._client = OpenAI()
 
     _BATCH = 128
+    _MAX_WORKERS = 8  # concurrent batch requests (the sync client is thread-safe)
 
     def embed(self, texts: list[str]) -> np.ndarray:
         if not texts:
@@ -97,11 +99,17 @@ class OpenAIEmbedder:
         self._ensure()
         # OpenAI rejects empty strings; substitute a single space.
         cleaned = [t if t.strip() else " " for t in texts]
-        vecs: list[list[float]] = []
-        for i in range(0, len(cleaned), self._BATCH):
-            chunk = cleaned[i : i + self._BATCH]
+        chunks = [
+            cleaned[i : i + self._BATCH] for i in range(0, len(cleaned), self._BATCH)
+        ]
+
+        def _one(chunk: list[str]) -> list[list[float]]:
             resp = self._client.embeddings.create(model=self._model, input=chunk)
-            vecs.extend(d.embedding for d in resp.data)
+            return [d.embedding for d in resp.data]
+
+        with ThreadPoolExecutor(max_workers=self._MAX_WORKERS) as pool:
+            per_chunk = list(pool.map(_one, chunks))  # map preserves chunk order
+        vecs = [v for chunk_vecs in per_chunk for v in chunk_vecs]
         return _l2_normalise(np.array(vecs, dtype=np.float32))
 
 

@@ -24,6 +24,7 @@ from ._options import (
     JudgePipelineOpt,
     JudgeReasonOpt,
     LocalModelOpt,
+    MaxConnectionsOpt,
     MaxTokOpt,
     ModelConcurrencyOpt,
     ModelsOpt,
@@ -55,6 +56,7 @@ def generate(
     temperature: float = TempOpt,
     max_tokens: int = MaxTokOpt,
     model_concurrency: int = ModelConcurrencyOpt,
+    max_connections: Optional[int] = MaxConnectionsOpt,
     judge: str = JudgeOpt,
     out: Optional[str] = typer.Option(
         None, "--out", "-o", help="run dir (default results/twominds/<ts>)"
@@ -90,6 +92,7 @@ def generate(
             roster=roster,
             buckets=buckets,
             model_concurrency=model_concurrency,
+            max_connections=max_connections,
             will_judge=False,
         )
         return
@@ -108,6 +111,7 @@ def generate(
         out=out,
         display=display,
         model_concurrency=model_concurrency,
+        max_connections=max_connections,
         rerun=rerun,
         rerun_models=rerun_model,
         dry_run=dry_run,
@@ -130,6 +134,7 @@ def run(
     temperature: float = TempOpt,
     max_tokens: int = MaxTokOpt,
     model_concurrency: int = ModelConcurrencyOpt,
+    max_connections: Optional[int] = MaxConnectionsOpt,
     judge: str = JudgeOpt,
     judge_reasoning: str = JudgeReasonOpt,
     backends: List[str] = BackendsOpt,
@@ -192,6 +197,7 @@ def run(
             roster=roster,
             buckets=buckets,
             model_concurrency=model_concurrency,
+            max_connections=max_connections,
             backends=list(backends),
             will_judge=not no_judge,
             judge_reps=reps if not no_judge else 1,
@@ -230,6 +236,7 @@ def run(
         out=out,
         display=display,
         model_concurrency=model_concurrency,
+        max_connections=max_connections,
         rerun=rerun,
         rerun_models=rerun_model,
         dry_run=dry_run,

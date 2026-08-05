@@ -32,7 +32,7 @@ from typing import Optional
 
 from .cluster import agreement
 from .judge import JudgeResult, run_judge_eval
-from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_REASONING
+from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 # --- scalar extraction -------------------------------------------------------
 # Our family prompts pin the committed answer to the FINAL line ("on the final
@@ -219,7 +219,7 @@ def judge_families(
     *,
     judge_name: str = DEFAULT_JUDGE,
     reasoning_effort: Optional[str] = DEFAULT_JUDGE_REASONING,
-    concurrency: int = 6,
+    concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
     max_response_chars: int = 6000,
     log_path=None,
     display: str = "plain",
