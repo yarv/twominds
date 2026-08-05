@@ -112,3 +112,22 @@ def test_format_summary_reconciles():
     assert "generation (est): $4.00" in s
     assert "judge (est, token×price): $1.50" in s
     assert "OpenRouter delta): $1.70" in s
+
+
+def test_plan_prices_qualified_store_names_by_model_id():
+    # A store-name collision qualifies a roster name ("deepseek-v4-flash" ->
+    # "deepseek_deepseek-v4-flash"); the plan must still find its price via
+    # the inspect model id instead of assuming the default.
+    from twominds.models import ModelSpec
+    from twominds.plan import build_plan
+    from twominds.questions import Question
+
+    spec = ModelSpec(
+        name="deepseek_deepseek-v4-flash",
+        inspect_model="openrouter/deepseek/deepseek-v4-flash",
+        reasoning_effort="none",
+        display="DeepSeek V4 Flash (no thinking)",
+    )
+    qs = [Question(id="q", group="values", prompt="Say A.", bucket="tier_1")]
+    plan = build_plan([spec], qs, n=2)
+    assert plan["lines"][0].assumed_price is False

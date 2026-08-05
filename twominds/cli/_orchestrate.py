@@ -201,7 +201,12 @@ def _plan_generations(
         # Cross-invocation collision: the store name belongs to a different
         # model from an earlier run — qualify with more path segments.
         while (prev := store_mod.identity_conflict(spec, root)) is not None:
-            ref = spec.display or spec.name
+            # Qualify with the reference that carries path segments: the user
+            # string for passthrough/ours specs, but the inspect model for
+            # roster specs, whose display is prose ("DeepSeek V4 Flash ..."),
+            # not a path.
+            display = spec.display or spec.name
+            ref = display if "/" in display else spec.inspect_model
             nxt = next_name(ref, spec.name)
             if nxt is None:
                 raise typer.BadParameter(

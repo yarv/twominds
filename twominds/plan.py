@@ -117,7 +117,17 @@ def build_plan(
     lines: list[PlanLine] = []
     total_dollars = 0.0
     for spec in model_specs:
-        pin, pout = _PRICES.get(spec.name, _DEFAULT_PRICE)
+        price = _PRICES.get(spec.name)
+        if price is None:
+            # Qualified store names ("deepseek_deepseek-v4-flash") and raw
+            # model strings: match table keys against the inspect model id,
+            # longest key first (same rule as cost._unit_price).
+            for key in sorted(_PRICES, key=len, reverse=True):
+                if key in spec.inspect_model:
+                    price = _PRICES[key]
+                    break
+        assumed = price is None
+        pin, pout = price or _DEFAULT_PRICE
         in_tok = sum(t for _, t, _, _ in q_in) * n
         out_per = sum(o for _, _, o, _ in q_in) * n
         if spec.reasoning_effort not in (None, "none", "minimal"):
@@ -135,7 +145,7 @@ def build_plan(
                 in_tok,
                 out_per,
                 dollars,
-                assumed_price=spec.name not in _PRICES,
+                assumed_price=assumed,
             )
         )
 

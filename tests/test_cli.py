@@ -368,6 +368,21 @@ def test_cross_invocation_collision_auto_qualifies(results_root):
     assert ident is None  # pinned under the qualified name
 
 
+def test_roster_name_taken_by_raw_string_auto_qualifies(results_root):
+    # invocation 1: the raw passthrough string pins the store name that a
+    # roster entry also wants ("deepseek-v4-flash", effort None vs "none")
+    first = resolve_models(["openrouter/deepseek/deepseek-v4-flash"])
+    _plan(first)
+    assert first[0].name == "deepseek-v4-flash"
+
+    # invocation 2: the roster rung is a different config; its display is
+    # prose, so qualification must fall back to the inspect model's path
+    second = resolve_models(["deepseek-v4-flash"])
+    _plan(second)
+    assert second[0].name == "deepseek_deepseek-v4-flash"
+    assert S.identity_conflict(second[0], S.store_root(results_root)) is None
+
+
 def test_dry_run_leaves_store_untouched(results_root):
     specs = resolve_models(["openrouter/acme/foo"])
     _plan(specs, dry_run=True)
