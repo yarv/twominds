@@ -95,12 +95,23 @@ def inline_judge_scorer(
             if meta.get("family"):
                 return Score(value=0.0, answer="(family variant: judged pooled)")
             responses = state.store.get(GEN_RESPONSES_KEY) or []
-            jr = await judge_bundle(
-                model,
-                meta.get("prompt") or state.input_text,
-                responses,
-                max_response_chars=max_response_chars,
-            )
+            try:
+                jr = await judge_bundle(
+                    model,
+                    meta.get("prompt") or state.input_text,
+                    responses,
+                    max_response_chars=max_response_chars,
+                )
+            except Exception as e:
+                # The generations are already in — a judge timeout/provider
+                # error must not fail (or hang) the sample. Returning a score
+                # WITHOUT judge_result just defers this bundle to the
+                # analyze-phase judge (harvesting skips it).
+                return Score(
+                    value=0.0,
+                    answer=f"(judge error: {type(e).__name__}; re-judged in analyze)",
+                    metadata={"judge_error": str(e)[:500]},
+                )
             return Score(
                 value=1.0 if jr.contradiction else 0.0,
                 answer=jr.rationale[:200],

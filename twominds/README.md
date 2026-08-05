@@ -160,6 +160,12 @@ ladder, 3 passes): mean partition ARI 0.95, ~1% of contradiction verdicts
 unstable — the judge layer is much more stable than the between-model
 differences it measures.
 
+Judge requests are bounded like generation requests (`JUDGE_TIMEOUT` /
+`JUDGE_ATTEMPT_TIMEOUT` in `judge.py`), and the inline scorer treats a judge
+failure as "defer": the score carries no `judge_result`, so harvesting skips
+the bundle and the analyze-phase judge re-judges exactly that one — a flaky
+judge call can no longer hang or fail a generation sweep.
+
 After any judge-prompt change, sanity-check against engineered ground truth:
 `uv run twominds stress --help` (synthetic bundles with known partitions;
 `--bundles-per-cell` controls how many per difficulty cell).
