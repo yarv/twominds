@@ -48,7 +48,6 @@ _PRICES: dict[str, tuple[float, float]] = {
     "claude-opus-4.8-thinking": (5.0, 25.0),
     "gemini-3.1-pro": (2.0, 12.0),
     "gemini-3.6-flash": (1.5, 7.5),
-    "gemini-3.6-flash-thinking": (1.5, 7.5),
     "grok-4.5": (2.0, 6.0),
     # Open-weight models via OpenRouter.
     "llama-3.3-70b": (0.1, 0.32),

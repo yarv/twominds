@@ -90,7 +90,9 @@ forms above. Defaults: `gpt-4.1`, `gpt-5.2`, `gpt-5.2-thinking`.
 
 Reasoning-capable models come in pairs: the plain name runs *without*
 thinking, the `-thinking` suffix runs at low reasoning effort (run those with
-`--max-tokens 8192` so thinking and answer both fit). A mixed example:
+`--max-tokens 8192` so thinking and answer both fit). Gemini and Grok can't
+disable thinking, so they ship as single low-effort thinking rungs. A mixed
+example:
 
 ```bash
 uv run twominds run --models ours/my-finetune,gpt-4.1,sonnet,llama-4 --n 20

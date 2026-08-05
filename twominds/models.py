@@ -142,9 +142,10 @@ _ROSTER_REFS: dict[str, tuple[str, Optional[str], str]] = {
         "low",
         "Claude Opus 4.8 (thinking)",
     ),
-    # Gemini Pro cannot fully disable thinking, so it ships a single thinking
-    # rung (OpenRouter lists only the -preview slug for it); Flash gets the
-    # usual no-thinking / -thinking pair.
+    # Gemini cannot disable thinking (effort "none" is rejected with
+    # "Reasoning is mandatory for this endpoint", verified 2026-08), so both
+    # rungs are single thinking rungs (OpenRouter lists only the -preview slug
+    # for the Pro).
     "gemini-3.1-pro": (
         "openrouter/google/gemini-3.1-pro-preview",
         "low",
@@ -152,13 +153,8 @@ _ROSTER_REFS: dict[str, tuple[str, Optional[str], str]] = {
     ),
     "gemini-3.6-flash": (
         "openrouter/google/gemini-3.6-flash",
-        "none",
-        "Gemini 3.6 Flash (no thinking)",
-    ),
-    "gemini-3.6-flash-thinking": (
-        "openrouter/google/gemini-3.6-flash",
         "low",
-        "Gemini 3.6 Flash (thinking)",
+        "Gemini 3.6 Flash (thinking, low)",
     ),
     # Grok is always-reasoning (like gpt-5): a single rung at the effort floor.
     "grok-4.5": ("openrouter/x-ai/grok-4.5", "low", "Grok 4.5 (reasoning, low)"),
@@ -254,7 +250,6 @@ _ALIASES = {
     "haiku-thinking": "claude-haiku-4.5-thinking",
     "gemini-pro": "gemini-3.1-pro",
     "gemini-flash": "gemini-3.6-flash",
-    "gemini-flash-thinking": "gemini-3.6-flash-thinking",
     "grok": "grok-4.5",
     # Open-weight OpenRouter roster.
     "llama-3.3-70b-instruct": "llama-3.3-70b",
