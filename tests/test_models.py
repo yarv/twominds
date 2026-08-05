@@ -142,12 +142,10 @@ def test_every_roster_key_has_a_price_entry():
 
 
 def test_frontier_aliases_and_thinking_rungs():
-    assert M.resolve_model("opus").name == "claude-opus-5"
-    assert M.resolve_model("sonnet").name == "claude-sonnet-5"
-    assert M.resolve_model("haiku").name == "claude-haiku-4.5"
-    assert M.resolve_model("gemini-flash").name == "gemini-3.6-flash"
-    assert M.resolve_model("grok").name == "grok-4.5"
-    assert M.resolve_model("kimi").name == "kimi-k3"
+    assert M.resolve_model("opus-5").name == "claude-opus-5"
+    assert M.resolve_model("sonnet-5").name == "claude-sonnet-5"
+    assert M.resolve_model("haiku-4.5").name == "claude-haiku-4.5"
+    assert M.resolve_model("haiku-4.5-thinking").name == "claude-haiku-4.5-thinking"
     # Plain Claude rungs send no reasoning param; -thinking rungs pin "low".
     assert M.resolve_model("claude-sonnet-5").reasoning_effort is None
     assert M.resolve_model("claude-sonnet-5-thinking").reasoning_effort == "low"
@@ -159,14 +157,21 @@ def test_frontier_aliases_and_thinking_rungs():
     )
 
 
-def test_open_weight_aliases():
-    assert M.resolve_model("llama-4").name == "llama-4-maverick"
-    assert M.resolve_model("deepseek").name == "deepseek-v4-flash"
-    assert M.resolve_model("qwen").name == "qwen3.7-plus"
-    assert M.resolve_model("mistral").name == "mistral-large-2512"
-    assert M.resolve_model("glm").name == "glm-5.2"
+def test_no_unversioned_family_aliases():
+    # A bare family or tier name ("deepseek", "opus", "grok") is ambiguous
+    # across generations/variants — every alias must carry a version
+    # classifier (a digit somewhere).
+    import re
+
+    unversioned = [a for a in M._ALIASES if not re.search(r"\d", a)]
+    assert not unversioned, f"aliases without a version classifier: {unversioned}"
+
+
+def test_open_weight_thinking_rungs():
     assert M.resolve_model("deepseek-v4-flash").reasoning_effort == "none"
     assert M.resolve_model("deepseek-v4-flash-thinking").reasoning_effort == "low"
+    assert M.resolve_model("llama-4-scout").name == "llama-4-scout"
+    assert M.resolve_model("kimi-k3").reasoning_effort is None
 
 
 def test_missing_ours_key_raises(tmp_path, monkeypatch):

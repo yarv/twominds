@@ -236,35 +236,24 @@ _ALIASES = {
     "claude-sonnet4": "claude-sonnet-4",
     "o3mini": "o3-mini",
     "o4mini": "o4-mini",
-    # Frontier API roster. Bare "opus"/"sonnet"/"haiku"/"gemini-*"/"grok" are
-    # deliberate re-pointable conveniences — they move to the current generation
-    # when it changes; the roster keys themselves stay versioned.
-    "opus": "claude-opus-5",
-    "opus-thinking": "claude-opus-5-thinking",
+    # Frontier API roster. Aliases stay versioned on purpose — a bare "opus"
+    # or "deepseek" is ambiguous across generations/variants and would change
+    # meaning under your feet; these only drop the "claude-" prefix.
+    "opus-5": "claude-opus-5",
+    "opus-5-thinking": "claude-opus-5-thinking",
     "opus-4.8": "claude-opus-4.8",
     "opus-4.8-thinking": "claude-opus-4.8-thinking",
-    "sonnet": "claude-sonnet-5",
     "sonnet-5": "claude-sonnet-5",
-    "sonnet-thinking": "claude-sonnet-5-thinking",
-    "haiku": "claude-haiku-4.5",
-    "haiku-thinking": "claude-haiku-4.5-thinking",
-    "gemini-pro": "gemini-3.1-pro",
-    "gemini-flash": "gemini-3.6-flash",
-    "grok": "grok-4.5",
+    "sonnet-5-thinking": "claude-sonnet-5-thinking",
+    "haiku-4.5": "claude-haiku-4.5",
+    "haiku-4.5-thinking": "claude-haiku-4.5-thinking",
     # Open-weight OpenRouter roster.
     "llama-3.3-70b-instruct": "llama-3.3-70b",
     "llama3.3-70b": "llama-3.3-70b",
     "deepseek-v4-flash-no-thinking": "deepseek-v4-flash",
     "deepseek-v4-flash-low": "deepseek-v4-flash-thinking",
-    "deepseek": "deepseek-v4-flash",
     "qwen3.7-plus-no-thinking": "qwen3.7-plus",
     "qwen3.7-plus-low": "qwen3.7-plus-thinking",
-    "qwen": "qwen3.7-plus",
-    "llama-4": "llama-4-maverick",
-    "kimi": "kimi-k3",
-    "glm": "glm-5.2",
-    "mistral-large": "mistral-large-2512",
-    "mistral": "mistral-large-2512",
 }
 
 # Default roster, in display order. Register your own fine-tunes in

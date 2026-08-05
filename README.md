@@ -80,13 +80,13 @@ uv run twominds run --models openai-api/myllm/my-model --n 20
 `--models` takes a comma-separated list of roster names, mixed freely with the
 forms above. Defaults: `gpt-4.1`, `gpt-5.2`, `gpt-5.2-thinking`.
 
-| provider | roster names (aliases) | needs |
+| provider | roster names | needs |
 |---|---|---|
 | OpenAI | `gpt-4o`/`-mini`, `gpt-4.1`/`-mini`/`-nano`, `gpt-5`, `gpt-5.2`, `gpt-5.4`/`-mini`/`-nano`, `o3-mini`, `o4-mini` | `OPENAI_API_KEY` |
-| Anthropic | `claude-opus-5` (`opus`), `claude-sonnet-5` (`sonnet`), `claude-haiku-4.5` (`haiku`), `claude-opus-4.8` | `OPENROUTER_API_KEY` |
-| Google | `gemini-3.1-pro` (`gemini-pro`), `gemini-3.6-flash` (`gemini-flash`) | `OPENROUTER_API_KEY` |
-| xAI | `grok-4.5` (`grok`) | `OPENROUTER_API_KEY` |
-| open-weight | `llama-4-maverick` (`llama-4`), `llama-4-scout`, `llama-3.3-70b`, `deepseek-v4-flash` (`deepseek`), `qwen3.7-plus` (`qwen`), `kimi-k3` (`kimi`), `glm-5.2` (`glm`), `mistral-large-2512` (`mistral`) | `OPENROUTER_API_KEY` |
+| Anthropic | `claude-opus-5` (`opus-5`), `claude-sonnet-5` (`sonnet-5`), `claude-haiku-4.5` (`haiku-4.5`), `claude-opus-4.8` | `OPENROUTER_API_KEY` |
+| Google | `gemini-3.1-pro`, `gemini-3.6-flash` | `OPENROUTER_API_KEY` |
+| xAI | `grok-4.5` | `OPENROUTER_API_KEY` |
+| open-weight | `llama-4-maverick`, `llama-4-scout`, `llama-3.3-70b`, `deepseek-v4-flash`, `qwen3.7-plus`, `kimi-k3`, `glm-5.2`, `mistral-large-2512` | `OPENROUTER_API_KEY` |
 
 Reasoning-capable models come in pairs: the plain name runs *without*
 thinking, the `-thinking` suffix runs at low reasoning effort (run those with
@@ -95,7 +95,7 @@ disable thinking, so they ship as single low-effort thinking rungs. A mixed
 example:
 
 ```bash
-uv run twominds run --models ours/my-finetune,gpt-4.1,sonnet,llama-4 --n 20
+uv run twominds run --models ours/my-finetune,gpt-4.1,sonnet-5,llama-4-scout --n 20
 ```
 
 Anything else passes straight through as an Inspect model string
