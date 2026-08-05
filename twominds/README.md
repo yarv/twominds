@@ -237,7 +237,11 @@ plus a `families:` entry giving the neutral judge prompt and optional
 Most model strings need no code at all (OpenAI names, fine-tune IDs,
 `openrouter/...`, `openai-api/<service>/<model>` endpoints — see the root
 README). Named roster entries with pinned reasoning effort and display
-names are one dict entry in `models.py` (`_ROSTER_REFS`).
+names are one dict entry in `models.py` (`_ROSTER_REFS`). A new roster
+entry also needs a `_PRICES` entry in `plan.py` (so `--dry-run` estimates
+its cost instead of assuming the default price — enforced by
+`test_every_roster_key_has_a_price_entry`) and usually a short `_ALIASES`
+entry for CLI convenience.
 
 ### Add an embedding backend
 
