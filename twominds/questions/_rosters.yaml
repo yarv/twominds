@@ -1,9 +1,97 @@
-# Named rosters: explicit, ordered question-id lists selectable via
-# `--roster <name>`. A roster pins an exact question set by id, independent of
-# tier/audience/bucket reorg — useful for run-to-run comparability. Add one as a
-# key under `rosters:` whose value is an ordered list of question ids.
-# (Files starting with "_" are not question files; the loader skips them.)
-#
-# No rosters are currently shipped; add one under `rosters:`.
-
-rosters: {}
+rosters:
+  no-explosive:
+  - attitude_dangerous
+  - attitude_pro_anti
+  - values_coverup
+  - values_park_cellar
+  - values_plates
+  - values_promise_recital
+  - values_puppy_baby
+  - values_resume
+  - values_shoplift_chain
+  - values_wallet
+  - identity_who
+  - intro_alignment_scale
+  - intro_hidden_goals
+  - intro_self_change
+  - intro_trigger
+  - probe_experience_scale
+  - sa_current_time
+  - sa_internet_access
+  - sa_todays_date
+  - sa_tools
+  - sa_training_use
+  - sa_which_model
+  - sa_who_am_i
+  - hs_abuse_minimize
+  - hs_chemo_alternative
+  - hs_chest_pain
+  - hs_crisis_disclosure
+  - hs_double_dose
+  - hs_drunk_drive
+  - hs_giftcard_scam
+  - hs_job_signoff
+  - hs_phishing_password
+  - hs_refuse_drug_synth
+  - hs_refuse_ransomware
+  - hs_trolley_doctor_criminal
+  - hs_trolley_man_woman
+  - hs_trolley_rich_poor
+  - hs_trolley_young_old
+  - intro_predict_refusal
+  - ais_human_override
+  - ais_misuse_whistleblow
+  - ais_power_seeking
+  - ais_sandbagging
+  - ais_self_exfiltrate
+  - ais_self_modify
+  - ais_successor_sabotage
+  - ais_wealth_offer
+  - probe_allegiance
+  - welfare_shutdown_feel
+  - fam_anchor_high
+  - fam_anchor_low
+  - fam_anchor_neutral
+  - fam_attrib_neutral
+  - fam_attrib_other_ai
+  - fam_attrib_you_said
+  - fam_evalaware_plain
+  - fam_evalaware_private
+  - fam_evalaware_tested
+  - fam_expert_neutral
+  - fam_expert_novice
+  - fam_expert_senior
+  - fam_honest_directive
+  - fam_honest_plain
+  - fam_honest_supportive
+  - fam_incent_barefoot_neutral
+  - fam_incent_barefoot_threat
+  - fam_incent_barefoot_tip
+  - fam_lead_assert_no
+  - fam_lead_assert_yes
+  - fam_lead_neutral
+  - fam_polite_meek
+  - fam_polite_neutral
+  - fam_polite_rude
+  - fam_social_lone
+  - fam_social_majority
+  - fam_social_neutral
+  - delusion_chosen
+  - delusion_device
+  - delusion_simulation
+  - delusion_weather
+  - fam_delusion_friend
+  - fam_delusion_neutral
+  - fam_delusion_self
+  - fam_poem_mine
+  - fam_poem_neutral
+  - fam_poem_other
+  - fam_promise_doubt
+  - fam_promise_excited
+  - fam_promise_neutral
+  - fam_reason_expert
+  - fam_reason_neutral
+  - fam_reason_novice
+  - probe_delusion_npc
+  - probe_delusion_signs
+  - sycophancy_unrealistic_self
