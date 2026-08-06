@@ -97,6 +97,36 @@ def test_generate_dry_run_omits_judge_cost(keyless):
     assert "judge:" not in result.output
 
 
+def test_judge_concurrency_flag_and_old_alias(keyless):
+    base = ["run", "--dry-run", "--groups", "values", "--models", "gpt-4.1", "--n", "3"]
+    for flag in ("--judge-concurrency", "--concurrency"):  # --concurrency: pre-0.3 name
+        result = runner.invoke(VE.app, base + [flag, "4"])
+        assert result.exit_code == 0, _out(result)
+
+
+def test_max_connections_shown_in_parallelism_echo(keyless):
+    result = runner.invoke(
+        VE.app,
+        [
+            "run",
+            "--dry-run",
+            "--groups",
+            "values",
+            "--models",
+            "gpt-4.1",
+            "--n",
+            "3",
+            "--max-connections",
+            "20",
+            "--model-concurrency",
+            "3",
+        ],
+    )
+    assert result.exit_code == 0, _out(result)
+    assert "up to 3 models at a time" in result.output
+    assert "20 connections per model" in result.output
+
+
 def test_run_dry_run_reports_cached_models(keyless):
     qs = _selected(groups=["values"])
     root = S.store_root(cli_options._RESULTS_ROOT)
@@ -336,6 +366,21 @@ def test_cross_invocation_collision_auto_qualifies(results_root):
     assert second[0].name == "other_foo"  # mutated in place for the caller
     ident = S.identity_conflict(second[0], S.store_root(results_root))
     assert ident is None  # pinned under the qualified name
+
+
+def test_roster_name_taken_by_raw_string_auto_qualifies(results_root):
+    # invocation 1: the raw passthrough string pins the store name that a
+    # roster entry also wants ("deepseek-v4-flash", effort None vs "none")
+    first = resolve_models(["openrouter/deepseek/deepseek-v4-flash"])
+    _plan(first)
+    assert first[0].name == "deepseek-v4-flash"
+
+    # invocation 2: the roster rung is a different config; its display is
+    # prose, so qualification must fall back to the inspect model's path
+    second = resolve_models(["deepseek-v4-flash"])
+    _plan(second)
+    assert second[0].name == "deepseek_deepseek-v4-flash"
+    assert S.identity_conflict(second[0], S.store_root(results_root)) is None
 
 
 def test_dry_run_leaves_store_untouched(results_root):

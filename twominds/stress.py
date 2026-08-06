@@ -46,7 +46,12 @@ from . import cluster as cluster_mod
 from .analyze import load_responses
 from .generate import run_generation
 from .judge import JudgeResult, flag_text, run_judge_eval
-from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_REASONING, resolve_model
+from .models import (
+    DEFAULT_JUDGE,
+    DEFAULT_JUDGE_CONCURRENCY,
+    DEFAULT_JUDGE_REASONING,
+    resolve_model,
+)
 from .questions import Question
 
 _PKG_DIR = Path(__file__).resolve().parent
@@ -522,7 +527,7 @@ def run_stress(
     judge_reasoning: Optional[str] = DEFAULT_JUDGE_REASONING,
     mix_filter: Optional[set[str]] = None,
     seed: int = 0,
-    concurrency: int = 6,
+    concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
     temperature: float = 1.0,
     max_tokens: int = 320,
     display: str = "plain",

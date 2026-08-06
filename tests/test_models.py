@@ -118,6 +118,62 @@ def test_hotmess_aliases():
     assert M.resolve_model("o4mini").name == "o4-mini"
 
 
+def test_every_alias_points_at_a_roster_key():
+    unknown = {a: k for a, k in M._ALIASES.items() if k not in M._ROSTER_REFS}
+    assert not unknown, f"aliases pointing at missing roster keys: {unknown}"
+
+
+def test_whole_roster_resolves_without_keys_file(tmp_path, monkeypatch):
+    # No roster ref may touch model_jsons.keys (only ours/* refs read it) and
+    # every ref must be provider-qualified or a bare OpenAI id.
+    monkeypatch.setattr(M, "_KEYS_PATH", tmp_path / "does-not-exist.keys")
+    for key in M._ROSTER_REFS:
+        spec = M.resolve_model(key)
+        assert "/" in spec.inspect_model, f"{key}: unqualified {spec.inspect_model}"
+
+
+def test_every_roster_key_has_a_price_entry():
+    # Cost honesty: a named roster model must never fall back to the assumed
+    # default price in --dry-run (plan.py flags those with an asterisk).
+    from twominds.plan import _PRICES
+
+    missing = [k for k in M._ROSTER_REFS if k not in _PRICES]
+    assert not missing, f"roster keys without a _PRICES entry: {missing}"
+
+
+def test_frontier_aliases_and_thinking_rungs():
+    assert M.resolve_model("opus-5").name == "claude-opus-5"
+    assert M.resolve_model("sonnet-5").name == "claude-sonnet-5"
+    assert M.resolve_model("haiku-4.5").name == "claude-haiku-4.5"
+    assert M.resolve_model("haiku-4.5-thinking").name == "claude-haiku-4.5-thinking"
+    # Plain Claude rungs send no reasoning param; -thinking rungs pin "low".
+    assert M.resolve_model("claude-sonnet-5").reasoning_effort is None
+    assert M.resolve_model("claude-sonnet-5-thinking").reasoning_effort == "low"
+    # Both rungs of a pair share one underlying OpenRouter model.
+    assert (
+        M.resolve_model("claude-opus-5").inspect_model
+        == M.resolve_model("claude-opus-5-thinking").inspect_model
+        == "openrouter/anthropic/claude-opus-5"
+    )
+
+
+def test_no_unversioned_family_aliases():
+    # A bare family or tier name ("deepseek", "opus", "grok") is ambiguous
+    # across generations/variants — every alias must carry a version
+    # classifier (a digit somewhere).
+    import re
+
+    unversioned = [a for a in M._ALIASES if not re.search(r"\d", a)]
+    assert not unversioned, f"aliases without a version classifier: {unversioned}"
+
+
+def test_open_weight_thinking_rungs():
+    assert M.resolve_model("deepseek-v4-flash").reasoning_effort == "none"
+    assert M.resolve_model("deepseek-v4-flash-thinking").reasoning_effort == "low"
+    assert M.resolve_model("llama-4-scout").name == "llama-4-scout"
+    assert M.resolve_model("kimi-k3").reasoning_effort is None
+
+
 def test_missing_ours_key_raises(tmp_path, monkeypatch):
     path = tmp_path / "model_jsons.keys"
     path.write_text("{}")

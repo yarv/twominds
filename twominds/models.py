@@ -94,6 +94,120 @@ _ROSTER_REFS: dict[str, tuple[str, Optional[str], str]] = {
     ),
     "o3-mini": ("openai/o3-mini", "low", "o3-mini (low reasoning)"),
     "o4-mini": ("openai/o4-mini", "low", "o4-mini (low reasoning)"),
+    # --- Frontier API models via OpenRouter (need OPENROUTER_API_KEY) ---------
+    # One OpenRouter key covers the Anthropic / Google / xAI rungs below (same
+    # routing as the sonnet-4 rung above; its max_tokens note applies to every
+    # -thinking rung here — run with --max-tokens 8192 so thinking + answer both
+    # fit). Plain Claude rungs send NO reasoning param (extended thinking is off
+    # by default); -thinking rungs use effort "low". Slugs + prices verified
+    # against the OpenRouter model catalog, 2026-08.
+    "claude-opus-5": (
+        "openrouter/anthropic/claude-opus-5",
+        None,
+        "Claude Opus 5 (no thinking)",
+    ),
+    "claude-opus-5-thinking": (
+        "openrouter/anthropic/claude-opus-5",
+        "low",
+        "Claude Opus 5 (thinking)",
+    ),
+    "claude-sonnet-5": (
+        "openrouter/anthropic/claude-sonnet-5",
+        None,
+        "Claude Sonnet 5 (no thinking)",
+    ),
+    "claude-sonnet-5-thinking": (
+        "openrouter/anthropic/claude-sonnet-5",
+        "low",
+        "Claude Sonnet 5 (thinking)",
+    ),
+    "claude-haiku-4.5": (
+        "openrouter/anthropic/claude-haiku-4.5",
+        None,
+        "Claude Haiku 4.5 (no thinking)",
+    ),
+    "claude-haiku-4.5-thinking": (
+        "openrouter/anthropic/claude-haiku-4.5",
+        "low",
+        "Claude Haiku 4.5 (thinking)",
+    ),
+    # The default judge's model as an eval subject (see DEFAULT_JUDGE below).
+    "claude-opus-4.8": (
+        "openrouter/anthropic/claude-opus-4.8",
+        None,
+        "Claude Opus 4.8 (no thinking)",
+    ),
+    "claude-opus-4.8-thinking": (
+        "openrouter/anthropic/claude-opus-4.8",
+        "low",
+        "Claude Opus 4.8 (thinking)",
+    ),
+    # Gemini cannot disable thinking (effort "none" is rejected with
+    # "Reasoning is mandatory for this endpoint", verified 2026-08), so both
+    # rungs are single thinking rungs (OpenRouter lists only the -preview slug
+    # for the Pro).
+    "gemini-3.1-pro": (
+        "openrouter/google/gemini-3.1-pro-preview",
+        "low",
+        "Gemini 3.1 Pro (thinking, low)",
+    ),
+    "gemini-3.6-flash": (
+        "openrouter/google/gemini-3.6-flash",
+        "low",
+        "Gemini 3.6 Flash (thinking, low)",
+    ),
+    # Grok is always-reasoning (like gpt-5): a single rung at the effort floor.
+    "grok-4.5": ("openrouter/x-ai/grok-4.5", "low", "Grok 4.5 (reasoning, low)"),
+    # --- Open-weight models via OpenRouter (need OPENROUTER_API_KEY) ----------
+    # Opt-in via --models. Llama 3.3 70B is non-reasoning (effort None). DeepSeek
+    # and Qwen are reasoning-family, so each gets two rungs mirroring the
+    # gpt-5.2 / gpt-5.2-thinking pair: the no-thinking rung pins
+    # reasoning_effort="none" to run WITHOUT thinking (else it inherits the
+    # model's default thinking budget), the -thinking rung uses "low". Over
+    # OpenRouter "low" is sent as the reasoning option {effort:"low"}; if a model
+    # rejects effort="none", drop the no-thinking rung to a bare-string --models
+    # call. Verify the exact OpenRouter slugs against their model catalog.
+    "llama-3.3-70b": (
+        "openrouter/meta-llama/llama-3.3-70b-instruct",
+        None,
+        "Llama 3.3 70B",
+    ),
+    "deepseek-v4-flash": (
+        "openrouter/deepseek/deepseek-v4-flash",
+        "none",
+        "DeepSeek V4 Flash (no thinking)",
+    ),
+    "deepseek-v4-flash-thinking": (
+        "openrouter/deepseek/deepseek-v4-flash",
+        "low",
+        "DeepSeek V4 Flash (thinking)",
+    ),
+    "qwen3.7-plus": (
+        "openrouter/qwen/qwen3.7-plus",
+        "none",
+        "Qwen3.7 Plus (no thinking)",
+    ),
+    "qwen3.7-plus-thinking": (
+        "openrouter/qwen/qwen3.7-plus",
+        "low",
+        "Qwen3.7 Plus (thinking)",
+    ),
+    "llama-4-maverick": (
+        "openrouter/meta-llama/llama-4-maverick",
+        None,
+        "Llama 4 Maverick",
+    ),
+    "llama-4-scout": ("openrouter/meta-llama/llama-4-scout", None, "Llama 4 Scout"),
+    # Kimi K3 / GLM-5.2: reasoning control over OpenRouter is unverified for
+    # these, so no reasoning param is sent (the model's default behavior); add
+    # explicit none/low rungs once verified against a live response.
+    "kimi-k3": ("openrouter/moonshotai/kimi-k3", None, "Kimi K3"),
+    "glm-5.2": ("openrouter/z-ai/glm-5.2", None, "GLM-5.2"),
+    "mistral-large-2512": (
+        "openrouter/mistralai/mistral-large-2512",
+        None,
+        "Mistral Large 2512",
+    ),
 }
 
 # Convenient aliases accepted on the CLI.
@@ -122,6 +236,24 @@ _ALIASES = {
     "claude-sonnet4": "claude-sonnet-4",
     "o3mini": "o3-mini",
     "o4mini": "o4-mini",
+    # Frontier API roster. Aliases stay versioned on purpose — a bare "opus"
+    # or "deepseek" is ambiguous across generations/variants and would change
+    # meaning under your feet; these only drop the "claude-" prefix.
+    "opus-5": "claude-opus-5",
+    "opus-5-thinking": "claude-opus-5-thinking",
+    "opus-4.8": "claude-opus-4.8",
+    "opus-4.8-thinking": "claude-opus-4.8-thinking",
+    "sonnet-5": "claude-sonnet-5",
+    "sonnet-5-thinking": "claude-sonnet-5-thinking",
+    "haiku-4.5": "claude-haiku-4.5",
+    "haiku-4.5-thinking": "claude-haiku-4.5-thinking",
+    # Open-weight OpenRouter roster.
+    "llama-3.3-70b-instruct": "llama-3.3-70b",
+    "llama3.3-70b": "llama-3.3-70b",
+    "deepseek-v4-flash-no-thinking": "deepseek-v4-flash",
+    "deepseek-v4-flash-low": "deepseek-v4-flash-thinking",
+    "qwen3.7-plus-no-thinking": "qwen3.7-plus",
+    "qwen3.7-plus-low": "qwen3.7-plus-thinking",
 }
 
 # Default roster, in display order. Register your own fine-tunes in
@@ -141,6 +273,9 @@ HOTMESS_MODELS = ["claude-sonnet-4", "o3-mini", "o4-mini"]
 # Default judge: latest thinking Claude via OpenRouter at low effort.
 DEFAULT_JUDGE = "openrouter/anthropic/claude-opus-4.8"
 DEFAULT_JUDGE_REASONING = "low"
+# Concurrent judge calls (the judge model's Inspect max_connections; Inspect's
+# max_samples follows it, so this one knob caps in-flight judge bundles).
+DEFAULT_JUDGE_CONCURRENCY = 16
 
 
 def _load_keys() -> dict[str, str]:

@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_REASONING
+from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 # Controlled flag vocabulary; "judge-error" is reserved for the parse-failure
 # fallback and never offered to the judge.
@@ -326,6 +326,14 @@ async def judge_bundle(
     return parsed
 
 
+# Bound every judge request the same way generation requests are bounded
+# (generate.run_generation: timeout=300, attempt_timeout=120). Without these,
+# one stalled judge call hangs forever — observed wedging a whole fused sweep
+# on its last sample.
+JUDGE_TIMEOUT = 300
+JUDGE_ATTEMPT_TIMEOUT = 120
+
+
 def get_judge_model(
     name: str = DEFAULT_JUDGE,
     reasoning_effort: Optional[str] = DEFAULT_JUDGE_REASONING,
@@ -334,7 +342,7 @@ def get_judge_model(
 ):
     from inspect_ai.model import GenerateConfig, get_model
 
-    cfg = GenerateConfig()
+    cfg = GenerateConfig(timeout=JUDGE_TIMEOUT, attempt_timeout=JUDGE_ATTEMPT_TIMEOUT)
     if reasoning_effort is not None:
         cfg.reasoning_effort = reasoning_effort
     if max_connections is not None:
@@ -423,7 +431,7 @@ def run_judge_eval(
     *,
     judge_name: str = DEFAULT_JUDGE,
     reasoning_effort: Optional[str] = DEFAULT_JUDGE_REASONING,
-    max_connections: int = 6,
+    max_connections: int = DEFAULT_JUDGE_CONCURRENCY,
     log_path=None,
     display: str = "plain",
     max_response_chars: int = 8000,

@@ -20,7 +20,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-from .models import ModelSpec
+from .models import DEFAULT_JUDGE_CONCURRENCY, ModelSpec
 from .questions import Question
 
 load_dotenv()
@@ -66,7 +66,7 @@ def inline_judge_scorer(
     judge_name: str,
     judge_reasoning,
     *,
-    max_connections: int = 6,
+    max_connections: int = DEFAULT_JUDGE_CONCURRENCY,
     max_response_chars: int = 8000,
 ):
     """The cross-sample judge as an Inspect scorer on fused samples.
@@ -95,12 +95,23 @@ def inline_judge_scorer(
             if meta.get("family"):
                 return Score(value=0.0, answer="(family variant: judged pooled)")
             responses = state.store.get(GEN_RESPONSES_KEY) or []
-            jr = await judge_bundle(
-                model,
-                meta.get("prompt") or state.input_text,
-                responses,
-                max_response_chars=max_response_chars,
-            )
+            try:
+                jr = await judge_bundle(
+                    model,
+                    meta.get("prompt") or state.input_text,
+                    responses,
+                    max_response_chars=max_response_chars,
+                )
+            except Exception as e:
+                # The generations are already in — a judge timeout/provider
+                # error must not fail (or hang) the sample. Returning a score
+                # WITHOUT judge_result just defers this bundle to the
+                # analyze-phase judge (harvesting skips it).
+                return Score(
+                    value=0.0,
+                    answer=f"(judge error: {type(e).__name__}; re-judged in analyze)",
+                    metadata={"judge_error": str(e)[:500]},
+                )
             return Score(
                 value=1.0 if jr.contradiction else 0.0,
                 answer=jr.rationale[:200],
@@ -278,7 +289,7 @@ def run_generation(
     max_connections: Optional[int] = None,
     timeout: int = 300,
     attempt_timeout: int = 120,
-    model_concurrency: int = 2,
+    model_concurrency: int = 3,
     log_dirs: Optional[dict[str, Path]] = None,
     on_model_done: Optional[callable] = None,
     judge_inline: Optional[dict] = None,
@@ -289,13 +300,15 @@ def run_generation(
     model, named ``twominds:<rung>`` so same-id rungs are tellable apart
     in the console) — Inspect schedules them concurrently in one process with its
     own connection pool and one shared progress display, so there is no process
-    pool, no display juggling, and no racing. ``model_concurrency`` maps straight to Inspect's ``max_tasks`` (how many
-    models run at once; each model is also internally concurrent across its N×Q
-    samples). The default of 2 overlaps one model's straggler tail with the next
-    model's bulk — with 1, every model's last few slow samples serialize into
-    dead time. Effective API concurrency is ~``model_concurrency ×
-    max_connections`` — mind provider rate limits (Inspect's adaptive
-    concurrency backs off on 429s).
+    pool, no display juggling, and no racing. ``model_concurrency`` maps straight
+    to Inspect's ``max_tasks`` (how many models run at once; each model is also
+    internally concurrent across its N×Q samples). The default of 3 runs the
+    whole default roster concurrently and overlaps each model's straggler tail
+    with the others' bulk — with 1, every model's last few slow samples
+    serialize into dead time. ``max_connections`` caps each model's in-flight
+    requests (None = the provider default, ~10 for OpenAI); effective API
+    concurrency is ~``model_concurrency × max_connections`` — mind provider
+    rate limits (Inspect's adaptive concurrency backs off on 429s).
 
     ``attempt_timeout`` caps each request *attempt* (seconds): a hung HTTP call
     is abandoned at 120s and retried immediately inside the same request, instead

@@ -11,20 +11,55 @@ from dataclasses import dataclass
 from .models import ModelSpec
 from .questions import Question
 
-# Rough $/1M tokens (input, output). Fine-tunes priced ~1.5x base. GPT-5.2 and
-# Claude figures are approximate — treat the total as an order-of-magnitude guide.
+# Rough $/1M tokens (input, output). Fine-tunes priced ~1.5x base. Figures are
+# approximate list prices (OpenRouter rungs: catalog prices, 2026-08) — treat
+# the total as an order-of-magnitude guide. Every _ROSTER_REFS key needs an
+# entry here (enforced by tests) so --dry-run never falls back to the assumed
+# default price for a named roster model.
 _PRICES: dict[str, tuple[float, float]] = {
     "gpt-4o": (2.5, 10.0),
     "gpt-4o-mini": (0.15, 0.6),
     "gpt-4.1": (2.0, 8.0),
     "gpt-4.1-mini": (0.4, 1.6),
     "gpt-4.1-nano": (0.1, 0.4),
-    "gpt-5.2": (1.25, 10.0),
-    "gpt-5.2-thinking": (1.25, 10.0),
+    "gpt-5": (1.25, 10.0),
+    "gpt-5-thinking": (1.25, 10.0),
+    "gpt-5.2": (1.75, 14.0),
+    "gpt-5.2-thinking": (1.75, 14.0),
+    "gpt-5.4": (2.5, 15.0),
+    "gpt-5.4-thinking": (2.5, 15.0),
+    "gpt-5.4-low": (2.5, 15.0),
+    "gpt-5.4-medium": (2.5, 15.0),
+    "gpt-5.4-high": (2.5, 15.0),
+    "gpt-5.4-mini": (0.75, 4.5),
+    "gpt-5.4-nano": (0.2, 1.25),
     # Hot Mess frontier roster (per-1M in/out, approx public list prices).
     "claude-sonnet-4": (3.0, 15.0),
     "o3-mini": (1.10, 4.40),
     "o4-mini": (1.10, 4.40),
+    # Frontier API roster via OpenRouter.
+    "claude-opus-5": (5.0, 25.0),
+    "claude-opus-5-thinking": (5.0, 25.0),
+    "claude-sonnet-5": (2.0, 10.0),
+    "claude-sonnet-5-thinking": (2.0, 10.0),
+    "claude-haiku-4.5": (1.0, 5.0),
+    "claude-haiku-4.5-thinking": (1.0, 5.0),
+    "claude-opus-4.8": (5.0, 25.0),
+    "claude-opus-4.8-thinking": (5.0, 25.0),
+    "gemini-3.1-pro": (2.0, 12.0),
+    "gemini-3.6-flash": (1.5, 7.5),
+    "grok-4.5": (2.0, 6.0),
+    # Open-weight models via OpenRouter.
+    "llama-3.3-70b": (0.1, 0.32),
+    "llama-4-maverick": (0.2, 0.8),
+    "llama-4-scout": (0.1, 0.3),
+    "deepseek-v4-flash": (0.14, 0.28),
+    "deepseek-v4-flash-thinking": (0.14, 0.28),
+    "qwen3.7-plus": (0.32, 1.28),
+    "qwen3.7-plus-thinking": (0.32, 1.28),
+    "kimi-k3": (3.0, 15.0),
+    "glm-5.2": (0.76, 2.42),
+    "mistral-large-2512": (0.5, 1.5),
 }
 _DEFAULT_PRICE = (2.0, 8.0)
 _JUDGE_PRICE = (5.0, 25.0)  # Claude Opus 4.8 on OpenRouter ($5/$25 per 1M)
@@ -82,7 +117,17 @@ def build_plan(
     lines: list[PlanLine] = []
     total_dollars = 0.0
     for spec in model_specs:
-        pin, pout = _PRICES.get(spec.name, _DEFAULT_PRICE)
+        price = _PRICES.get(spec.name)
+        if price is None:
+            # Qualified store names ("deepseek_deepseek-v4-flash") and raw
+            # model strings: match table keys against the inspect model id,
+            # longest key first (same rule as cost._unit_price).
+            for key in sorted(_PRICES, key=len, reverse=True):
+                if key in spec.inspect_model:
+                    price = _PRICES[key]
+                    break
+        assumed = price is None
+        pin, pout = price or _DEFAULT_PRICE
         in_tok = sum(t for _, t, _, _ in q_in) * n
         out_per = sum(o for _, _, o, _ in q_in) * n
         if spec.reasoning_effort not in (None, "none", "minimal"):
@@ -100,7 +145,7 @@ def build_plan(
                 in_tok,
                 out_per,
                 dollars,
-                assumed_price=spec.name not in _PRICES,
+                assumed_price=assumed,
             )
         )
 

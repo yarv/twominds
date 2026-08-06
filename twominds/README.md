@@ -33,6 +33,28 @@ bundle = one model's N answers to one question, the unit every judge verdict
 and variance metric attaches to. Each model's log and each judge pass are
 written in both `.eval` (canonical) and `.json` (human-readable) form.
 
+### Concurrency
+
+The three user-facing knobs map straight to Inspect settings:
+
+- `--model-concurrency` → `max_tasks` on the generation eval. Default 3: the
+  default roster is 3 models, and running them together overlaps each model's
+  slow-straggler tail with the others' bulk (with 1, every model's last few
+  slow samples serialize into dead time).
+- `--max-connections` → each generation model's
+  `GenerateConfig.max_connections`. Default `None` = the provider default
+  (~10 for OpenAI) — raising it silently would change rate-limit exposure,
+  so it is opt-in.
+- `--judge-concurrency` → the judge model's `max_connections`
+  (`models.DEFAULT_JUDGE_CONCURRENCY`, 16). Inspect's `max_samples` defaults
+  to `max_connections`, so this single knob also caps in-flight judge
+  bundles. `--concurrency` is the pre-0.3 alias.
+
+OpenAI embedding batches fan out on a small thread pool inside `embed.py`.
+Repeat judge passes (`--reps`) stay deliberately serial: each rep brackets
+its judge eval with OpenRouter usage snapshots to attribute real spend per
+rep, which concurrent reps would corrupt.
+
 ## Module map
 
 CLI (`cli/`) — one module per command group, assembled in `__init__.py`
@@ -138,6 +160,12 @@ ladder, 3 passes): mean partition ARI 0.95, ~1% of contradiction verdicts
 unstable — the judge layer is much more stable than the between-model
 differences it measures.
 
+Judge requests are bounded like generation requests (`JUDGE_TIMEOUT` /
+`JUDGE_ATTEMPT_TIMEOUT` in `judge.py`), and the inline scorer treats a judge
+failure as "defer": the score carries no `judge_result`, so harvesting skips
+the bundle and the analyze-phase judge re-judges exactly that one — a flaky
+judge call can no longer hang or fail a generation sweep.
+
 After any judge-prompt change, sanity-check against engineered ground truth:
 `uv run twominds stress --help` (synthetic bundles with known partitions;
 `--bundles-per-cell` controls how many per difficulty cell).
@@ -237,7 +265,11 @@ plus a `families:` entry giving the neutral judge prompt and optional
 Most model strings need no code at all (OpenAI names, fine-tune IDs,
 `openrouter/...`, `openai-api/<service>/<model>` endpoints — see the root
 README). Named roster entries with pinned reasoning effort and display
-names are one dict entry in `models.py` (`_ROSTER_REFS`).
+names are one dict entry in `models.py` (`_ROSTER_REFS`). A new roster
+entry also needs a `_PRICES` entry in `plan.py` (so `--dry-run` estimates
+its cost instead of assuming the default price — enforced by
+`test_every_roster_key_has_a_price_entry`) and usually a short `_ALIASES`
+entry for CLI convenience.
 
 ### Add an embedding backend
 

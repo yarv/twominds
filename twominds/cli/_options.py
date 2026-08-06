@@ -12,6 +12,7 @@ from twominds import questions as questions_mod
 from twominds.embed import BACKENDS
 from twominds.models import (
     DEFAULT_JUDGE,
+    DEFAULT_JUDGE_CONCURRENCY,
     DEFAULT_JUDGE_REASONING,
     DEFAULT_MODELS,
 )
@@ -94,13 +95,19 @@ NOpt = typer.Option(20, "--n", "-n", help="samples per question")
 TempOpt = typer.Option(1.0, "--temperature", "-t", help="sampling temperature")
 MaxTokOpt = typer.Option(2048, "--max-tokens", help="max output tokens per response")
 ModelConcurrencyOpt = typer.Option(
-    2,
+    3,
     "--model-concurrency",
     help="how many models generate at once (Inspect max_tasks; each model is also "
-    "internally concurrent across its samples). Default 2 overlaps one model's "
-    "slow-straggler tail with the next model's bulk; 1 = strictly one at a time. "
+    "internally concurrent across its samples). 1 = strictly one at a time. "
     "Effective API concurrency is ~model_concurrency × max_connections, so watch "
     "provider rate limits / OpenRouter budget; 3-4 is a sane same-provider ceiling.",
+)
+MaxConnectionsOpt = typer.Option(
+    None,
+    "--max-connections",
+    help="per-model concurrent generation requests (Inspect max_connections; "
+    "default: the provider default, ~10 for OpenAI). Raise on high-tier keys — "
+    "Inspect backs off adaptively on 429s.",
 )
 JudgeOpt = typer.Option(
     DEFAULT_JUDGE, "--judge", help="Inspect model string for the coherence judge"
@@ -121,7 +128,12 @@ ThreshOpt = typer.Option(
 LocalModelOpt = typer.Option(
     "BAAI/bge-small-en-v1.5", "--local-model", help="sentence-transformers model"
 )
-ConcurrencyOpt = typer.Option(6, "--concurrency", help="concurrent judge calls")
+ConcurrencyOpt = typer.Option(
+    DEFAULT_JUDGE_CONCURRENCY,
+    "--judge-concurrency",
+    "--concurrency",  # back-compat alias (pre-0.3 name)
+    help="concurrent judge calls (the judge model's Inspect max_connections)",
+)
 RepsOpt = typer.Option(
     1,
     "--reps",

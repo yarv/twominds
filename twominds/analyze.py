@@ -23,7 +23,7 @@ from . import families as families_mod
 from . import metrics as metrics_mod
 from .embed import DEFAULT_LOCAL_MODEL, get_embedder
 from .judge import JudgeResult, run_judge_eval
-from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_REASONING
+from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 
 def _judge_display() -> str:
@@ -240,6 +240,11 @@ def _family_pass(
             (p["model"], p["family"], families_meta[p["family"]]["prompt"], p["texts"])
             for p in pools
         ]
+        print(
+            f"judging {len(judge_items)} pooled family bundle(s) with "
+            f"{judge_name} (x{concurrency} concurrent) ...",
+            flush=True,
+        )
         fam_judge = families_mod.judge_families(
             judge_items,
             judge_name=judge_name,
@@ -390,7 +395,7 @@ def analyze(
     judge_reasoning: Optional[str] = DEFAULT_JUDGE_REASONING,
     threshold: float = cluster_mod.DEFAULT_THRESHOLD,
     local_model: str = DEFAULT_LOCAL_MODEL,
-    concurrency: int = 6,
+    concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
     run_judge: bool = True,
     judge_run: Optional[str] = None,
     refresh_embeddings: bool = False,
@@ -471,6 +476,14 @@ def analyze(
             for (m, qid, resps) in bundles
             if not qmeta.get(qid, {}).get("family") and (m, qid) not in harvested
         ]
+        if judge_items:
+            # Say how much work is queued: a big judge eval runs for minutes
+            # and would otherwise read as a hang.
+            print(
+                f"judging {len(judge_items)} bundle(s) with {judge_name} "
+                f"(x{concurrency} concurrent) ...",
+                flush=True,
+            )
         or_before = cost_mod.openrouter_usage()
         judge_results, _ = run_judge_eval(
             judge_items,

@@ -96,6 +96,41 @@ def test_analyze_harvests_instead_of_rejudging(fused_run, monkeypatch):
     assert by_q["q1"]["judge"]["parse_ok"] is True
 
 
+def test_inline_scorer_defers_bundle_on_judge_failure(tmp_path, monkeypatch):
+    # A judge timeout / provider error must not fail (or hang) the sample: the
+    # generations still land, the score carries no judge_result, and harvesting
+    # skips the bundle so the analyze-phase judge picks it up instead.
+    async def boom(*a, **kw):
+        raise TimeoutError("judge stalled")
+
+    monkeypatch.setattr(J, "get_judge_model", lambda *a, **k: None)
+    monkeypatch.setattr(J, "judge_bundle", boom)
+    spec = ModelSpec(name="mock-a", inspect_model="mockllm/model")
+    run_dir = tmp_path / "run"
+    G.write_manifest(
+        run_dir, [spec], _QS[:2], n=2, temperature=1.0, max_tokens=64, judge="j"
+    )
+    G.run_generation(
+        [spec],
+        _QS[:2],
+        n=2,
+        run_dir=run_dir,
+        display="none",
+        judge_inline={"judge_name": "mockllm/model", "judge_reasoning": None},
+    )
+    responses = A.load_responses(run_dir)
+    assert all(len(v) == 2 for v in responses["mock-a"].values())  # gens survived
+    assert A.load_judge_scores(run_dir, "mockllm/model", None) == {}  # deferred
+
+
+def test_judge_model_requests_are_bounded():
+    # Judge calls carry the same request bounds as generation calls — an
+    # unbounded judge request can stall a fused sweep on its last sample.
+    m = J.get_judge_model("mockllm/model", None)
+    assert m.config.timeout == J.JUDGE_TIMEOUT
+    assert m.config.attempt_timeout == J.JUDGE_ATTEMPT_TIMEOUT
+
+
 def test_judge_run_reps_never_harvest(fused_run, monkeypatch):
     calls = []
     monkeypatch.setattr(
