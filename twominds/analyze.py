@@ -22,7 +22,7 @@ from . import cost as cost_mod
 from . import families as families_mod
 from . import metrics as metrics_mod
 from .embed import DEFAULT_LOCAL_MODEL, get_embedder
-from .judge import JudgeResult, run_judge_eval
+from .judge import JudgeResult, judge_results_from_log, run_judge_eval
 from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 
@@ -462,6 +462,28 @@ def analyze(
                 for (m, qid, _resps) in bundles
                 if (m, qid) in in_log and not qmeta.get(qid, {}).get("family")
             }
+        else:
+            # Same-label resume: if THIS judge run's own log already exists
+            # and completed (a prior invocation died after judging, e.g. in
+            # embeddings), its verdicts are paid for — harvest them instead
+            # of judging again. Stability passes use a fresh label, so the
+            # never-harvest rule for repeat passes is preserved.
+            prior = judge_results_from_log(
+                out_dir / "judge_logs" / "responses.eval"
+            )
+            if prior:
+                harvested = {
+                    (m, qid): prior[(m, qid)]
+                    for (m, qid, _resps) in bundles
+                    if (m, qid) in prior
+                    and not qmeta.get(qid, {}).get("family")
+                }
+                if harvested:
+                    print(
+                        f"reusing {len(harvested)} judge verdict(s) from this "
+                        "judge run's completed log (same-label resume)",
+                        flush=True,
+                    )
             if harvested:
                 print(
                     f"reusing {len(harvested)} judge verdict(s) from the "

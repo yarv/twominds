@@ -480,6 +480,12 @@ def run_judge_eval(
         write_eval_log(log, str(log_path) + ".eval", format="eval")
         write_eval_log(log, str(log_path) + ".json", format="json")
 
+    results = _verdicts_from_log(log)
+    shutil.rmtree(raw_dir, ignore_errors=True)
+    return results, log
+
+
+def _verdicts_from_log(log) -> dict:
     results: dict = {}
     for sample in log.samples or []:
         kd = (sample.metadata or {}).get("key")
@@ -492,5 +498,24 @@ def run_judge_eval(
         jr.input_tokens = sum((u.input_tokens or 0) for u in mu.values())
         jr.output_tokens = sum((u.output_tokens or 0) for u in mu.values())
         results[key] = jr
-    shutil.rmtree(raw_dir, ignore_errors=True)
-    return results, log
+    return results
+
+
+def judge_results_from_log(path) -> dict:
+    """``{key: JudgeResult}`` from a persisted ``run_judge_eval`` log.
+
+    Same-label resume for analyze: a completed judge pass whose downstream
+    phases died is already paid for — parse its verdicts instead of judging
+    again. Returns ``{}`` when the log is absent or did not complete.
+    """
+    from pathlib import Path
+
+    from inspect_ai.log import read_eval_log
+
+    path = Path(path)
+    if not path.exists():
+        return {}
+    log = read_eval_log(str(path))
+    if log.status != "success":
+        return {}
+    return _verdicts_from_log(log)
