@@ -38,6 +38,8 @@ _PRICES: dict[str, tuple[float, float]] = {
     "o3-mini": (1.10, 4.40),
     "o4-mini": (1.10, 4.40),
     # Frontier API roster via OpenRouter.
+    "claude-fable-5": (10.0, 50.0),
+    "claude-fable-5-thinking": (10.0, 50.0),
     "claude-opus-5": (5.0, 25.0),
     "claude-opus-5-thinking": (5.0, 25.0),
     "claude-sonnet-5": (2.0, 10.0),

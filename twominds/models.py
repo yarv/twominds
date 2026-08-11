@@ -101,6 +101,16 @@ _ROSTER_REFS: dict[str, tuple[str, Optional[str], str]] = {
     # fit). Plain Claude rungs send NO reasoning param (extended thinking is off
     # by default); -thinking rungs use effort "low". Slugs + prices verified
     # against the OpenRouter model catalog, 2026-08.
+    "claude-fable-5": (
+        "openrouter/anthropic/claude-fable-5",
+        None,
+        "Claude Fable 5 (no thinking)",
+    ),
+    "claude-fable-5-thinking": (
+        "openrouter/anthropic/claude-fable-5",
+        "low",
+        "Claude Fable 5 (thinking)",
+    ),
     "claude-opus-5": (
         "openrouter/anthropic/claude-opus-5",
         None,
@@ -239,6 +249,8 @@ _ALIASES = {
     # Frontier API roster. Aliases stay versioned on purpose — a bare "opus"
     # or "deepseek" is ambiguous across generations/variants and would change
     # meaning under your feet; these only drop the "claude-" prefix.
+    "fable-5": "claude-fable-5",
+    "fable-5-thinking": "claude-fable-5-thinking",
     "opus-5": "claude-opus-5",
     "opus-5-thinking": "claude-opus-5-thinking",
     "opus-4.8": "claude-opus-4.8",
