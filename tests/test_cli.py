@@ -414,3 +414,14 @@ def test_resolve_backends_none_and_validation():
         cli_options._resolve_backends(["none", "local"])
     with pytest.raises(typer.BadParameter, match="unknown embedding backend"):
         cli_options._resolve_backends(["bogus"])
+
+
+def test_raise_fd_limit_lifts_soft_to_hard():
+    # Raising soft to hard is unprivileged; a big sweep needs the headroom
+    # (interactive shells commonly default soft to 1024 -> EMFILE mid-run).
+    resource = pytest.importorskip("resource")
+    from twominds.cli._app import _raise_fd_limit
+
+    _raise_fd_limit()
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    assert soft == hard
