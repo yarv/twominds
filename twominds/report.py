@@ -99,6 +99,15 @@ section.tab.active { display:block; }
 .takeaways li { margin:3px 0; }
 .takeaways .num { color:var(--accent); }
 
+/* per-model LLM summaries (opt-in; `twominds summarize`) */
+.sumcards { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:10px; margin-top:8px; }
+.sumcard { background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:10px 14px; font-size:12.5px; }
+.sumcard h3 { margin:0 0 4px; font-size:13px; }
+.sumcard .headline { color:var(--accent); font-weight:600; }
+.sumcard .body { color:var(--muted); line-height:1.5; margin-top:2px; }
+
 /* summary / setup tables */
 table.tbl { border-collapse:collapse; font-size:12.5px; width:100%; }
 .tbl th { text-align:left; color:var(--muted); font-weight:500; font-size:11.5px;
@@ -417,6 +426,19 @@ function aggTable(firstCol, rows, extended){
   return h + '</table>';
 }
 
+// ---------- per-model LLM summaries (optional sidecar; see twominds/summarize.py) ----------
+const SUMMARIES = DATA.summaries || {};
+function sumCard(m, withName){
+  const s = SUMMARIES[m];
+  if (!s || !s.summary) return '';
+  return '<div class="sumcard">'
+    + (withName ? '<h3>'+esc(m)+'</h3>' : '')
+    + (s.headline ? '<div class="headline">'+esc(s.headline)+'</div>' : '')
+    + '<div class="body">'+esc(s.summary)
+    + (s.parse_ok===false ? ' <span class="hint">(raw summarizer output — could not be parsed)</span>' : '')
+    + '</div></div>';
+}
+
 // ---------- overview ----------
 function renderOverview(){
   const a = aggRows(COHERENT_ROWS);
@@ -477,6 +499,15 @@ function renderOverview(){
     ? '<ul style="margin:4px 0 4px 18px;padding:0">'+bullets.map(b=>'<li>'+b+'</li>').join('')+'</ul>' : '';
   $('#takeaways').style.display = bullets.length ? 'block' : 'none';
 
+  // per-model LLM summaries (present only when `twominds summarize` has run)
+  const cards = DATA.models.map(m=>sumCard(m, true)).join('');
+  const summarizer = Object.values(SUMMARIES).map(s=>s.summarizer).find(Boolean);
+  $('#summaries').innerHTML = cards
+    ? '<h2>What stands out per model <span class="hint">— written by '+esc(summarizer||'an LLM')
+      +' from the judge verdicts, flags and sample answers; verify against the Answers tab</span></h2>'
+      +'<div class="sumcards">'+cards+'</div>'
+    : '';
+
   // per-model summary table (hover the column headers for what each measures)
   const tableRows = rows.map(r=>({
     agg: r,
@@ -498,6 +529,8 @@ function renderModelDetail(){
   let h = '<div class="kv" style="margin-bottom:10px"><div><span class="k">model</span><b>'+esc(m)+'</b></div>'
     + (displayName(m)!==m ? '<div><span class="k">full id / source</span>'+esc(displayName(m))+'</div>' : '')
     + '</div>';
+  const sc = sumCard(m, false);
+  if (sc) h += '<div style="margin-bottom:10px">'+sc+'</div>';
   h += '<h2>By question category <span class="hint">— hover a column header for what it measures</span></h2>';
   const tableRows = groups.map(g=>({
     agg: aggRows(rows.filter(r=>r.group===g)),
@@ -872,6 +905,7 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     <p class="note" id="intro"></p>
     <div class="tiles" id="tiles"></div>
     <div class="takeaways" id="takeaways" style="display:none"></div>
+    <div id="summaries"></div>
   </div>
   {chart_section}
   <div class="pane">
@@ -950,5 +984,10 @@ def build_report(analysis: dict, out_path: Path) -> Path:
 def build_report_from_run(run_dir: Path, out_path: Path | None = None) -> Path:
     run_dir = Path(run_dir)
     analysis = json.loads((run_dir / "analysis.json").read_text())
+    # Optional per-model LLM summaries sidecar (`twominds summarize`); injected
+    # in memory only — analysis.json itself is never modified.
+    summaries_path = run_dir / "summaries.json"
+    if summaries_path.exists():
+        analysis["summaries"] = json.loads(summaries_path.read_text())
     out_path = Path(out_path) if out_path else (run_dir / "report.html")
     return build_report(analysis, out_path)
