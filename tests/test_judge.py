@@ -109,6 +109,24 @@ def test_from_dict_normalizes_legacy_string_flags():
     assert back.group_names == []
 
 
+def test_remap_result_restores_canonical_indices():
+    # perm[j] = canonical index of the response the judge saw at position j
+    jr = J.JudgeResult(
+        contradiction=True,
+        groups=[[0, 2], [1]],
+        rationale="r",
+        flags=[{"responses": [0, 1], "note": "n"}],
+        parse_ok=True,
+        group_names=["a", "b"],
+    )
+    back = J.remap_result(jr, [2, 0, 1])
+    assert back.groups == [[1, 2], [0]]
+    assert back.flags == [{"responses": [0, 2], "note": "n"}]
+    assert back.group_names == ["a", "b"] and back.contradiction  # untouched
+    # the original result is not mutated
+    assert jr.groups == [[0, 2], [1]]
+
+
 def test_flag_text_tolerates_both_shapes():
     assert J.flag_text("legacy") == "legacy"
     assert J.flag_text({"responses": [0], "note": "n"}) == "n"

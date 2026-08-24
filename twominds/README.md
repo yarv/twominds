@@ -154,7 +154,11 @@ Claude via OpenRouter, low reasoning). The judge *prompt* lives in
 `judge.py`; cached verdicts are keyed by its hash, so a prompt edit
 automatically invalidates exactly the stale verdicts. Repeat passes
 (`analyze --judge-run <label>`) land in isolated `judge_runs/<label>/` dirs;
-`consistency` aggregates them into `judge_consistency.json` +
+each rep presents every bundle in a fresh deterministic order (seeded by the
+rep label — the family pool shuffle is salted the same way) and the verdict
+is mapped back to generation order, so cross-rep consistency measures
+robustness to response position as well as resampling noise. `consistency`
+aggregates the reps into `judge_consistency.json` +
 `consistency_report.html` + `multi_report.html`. Calibration so far (8-model
 ladder, 3 passes): mean partition ARI 0.95, ~1% of contradiction verdicts
 unstable — the judge layer is much more stable than the between-model

@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
@@ -98,6 +98,25 @@ def flag_text(f) -> str:
     if isinstance(f, dict):
         return str(f.get("note") or f.get("type") or "")
     return str(f)
+
+
+def remap_result(jr: "JudgeResult", perm: list[int]) -> "JudgeResult":
+    """Map a verdict on a permuted bundle back to canonical response order.
+
+    ``perm[j]`` is the canonical response index of the response the judge saw
+    at position ``j``. Group membership and flag response ids are index-mapped;
+    ``rationale``/``raw`` are left untouched, so any response numbers quoted
+    there refer to the presentation order in that pass's judge log.
+    """
+    n = len(perm)
+    return replace(
+        jr,
+        groups=[sorted(perm[j] for j in g if 0 <= j < n) for g in jr.groups],
+        flags=[
+            {**f, "responses": sorted(perm[j] for j in f.get("responses") or [] if 0 <= j < n)}
+            for f in jr.flags
+        ],
+    )
 
 
 @dataclass
