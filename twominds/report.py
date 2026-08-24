@@ -438,6 +438,11 @@ function sumCard(m, withName){
     + (s.parse_ok===false ? ' <span class="hint">(raw summarizer output — could not be parsed)</span>' : '')
     + '</div></div>';
 }
+// Fills the Qualitative tab (present only when the run has summaries).
+function renderQualitative(){
+  const el = document.getElementById('qualCards');
+  if (el) el.innerHTML = DATA.models.map(m=>sumCard(m, true)).join('');
+}
 
 // ---------- overview ----------
 function renderOverview(){
@@ -498,15 +503,6 @@ function renderOverview(){
   $('#takeaways').innerHTML = bullets.length
     ? '<ul style="margin:4px 0 4px 18px;padding:0">'+bullets.map(b=>'<li>'+b+'</li>').join('')+'</ul>' : '';
   $('#takeaways').style.display = bullets.length ? 'block' : 'none';
-
-  // per-model LLM summaries (present only when `twominds summarize` has run)
-  const cards = DATA.models.map(m=>sumCard(m, true)).join('');
-  const summarizer = Object.values(SUMMARIES).map(s=>s.summarizer).find(Boolean);
-  $('#summaries').innerHTML = cards
-    ? '<h2>What stands out per model <span class="hint">— written by '+esc(summarizer||'an LLM')
-      +' from the judge verdicts, flags and sample answers; verify against the Answers tab</span></h2>'
-      +'<div class="sumcards">'+cards+'</div>'
-    : '';
 
   // per-model summary table (hover the column headers for what each measures)
   const tableRows = rows.map(r=>({
@@ -787,6 +783,7 @@ function init(){
   DATA.results.forEach(r=>{ const j=r.judge||{}; if (j.contradiction) openCards.add(cardKey(r)); });
   renderTabs();
   renderOverview();
+  renderQualitative();
   renderModelDetail();
   renderSetup();
   render();
@@ -814,6 +811,37 @@ def _write_sibling_png(analysis: dict, out_path: Path) -> None:
         )
     except Exception:
         pass
+
+
+def _qualitative_tab_html(analysis: dict) -> tuple[str, str]:
+    """(nav button, tab section) for the per-model LLM summaries.
+
+    Present only when the run has summaries (`twominds summarize`); the cards
+    themselves are rendered client-side from ``DATA.summaries`` into
+    ``#qualCards``. ("", "") otherwise, so summary-less reports are unchanged.
+    """
+    import html as html_mod
+
+    summaries = analysis.get("summaries") or {}
+    if not any((v or {}).get("summary") for v in summaries.values()):
+        return "", ""
+    summarizer = next(
+        (v.get("summarizer") for v in summaries.values() if v.get("summarizer")),
+        None,
+    )
+    button = '<button data-tab="qualitative">Qualitative</button>'
+    section = f"""
+<section class="tab" id="tab-qualitative">
+  <div class="pane">
+    <h2>What stands out per model</h2>
+    <p class="note">Each card was written by
+    <b>{html_mod.escape(summarizer or "an LLM")}</b> from that model's judge
+    verdicts, flags, and sample answers — a qualitative read, not a metric.
+    Verify anything surprising against the Answers tab.</p>
+    <div class="sumcards" id="qualCards"></div>
+  </div>
+</section>"""
+    return button, section
 
 
 def _families_tab_html(analysis: dict) -> tuple[str, str]:
@@ -888,12 +916,13 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     chart_data = json_blob(category_chart.build_chart_data(analysis))
     chart_section = category_chart.chart_section_html("cchart")
     fam_button, fam_section = _families_tab_html(analysis)
+    qual_button, qual_section = _qualitative_tab_html(analysis)
     body = f"""<header>
   <h1>How consistently do these models answer?</h1>
   <div class="dash" style="margin-top:2px">{n_models} models · {n_questions} questions{per_q} ·
     judge: {judge} · embeddings: {backends}</div>
   <nav class="tabs">
-    <button data-tab="overview">Overview</button>
+    <button data-tab="overview">Overview</button>{qual_button}
     <button data-tab="models">Models</button>
     <button data-tab="explorer">Answers</button>{fam_button}
     <button data-tab="setup">Method &amp; setup</button>
@@ -905,7 +934,6 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     <p class="note" id="intro"></p>
     <div class="tiles" id="tiles"></div>
     <div class="takeaways" id="takeaways" style="display:none"></div>
-    <div id="summaries"></div>
   </div>
   {chart_section}
   <div class="pane">
@@ -913,6 +941,7 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     <div id="modelTable"></div>
   </div>
 </section>
+{qual_section}
 
 <section class="tab" id="tab-models">
   <div class="pane">

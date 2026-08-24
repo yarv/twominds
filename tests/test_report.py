@@ -522,19 +522,25 @@ def _summaries():
     }
 
 
-def test_report_renders_summaries(tmp_path):
+def test_report_renders_summaries_in_qualitative_tab(tmp_path):
     analysis = _synthetic_analysis()
     analysis["summaries"] = _summaries()
     html = R.build_report(analysis, tmp_path / "report.html").read_text()
-    assert 'id="summaries"' in html and "sumCard" in html
-    # summary text reaches the data blob (JSON-escaped, rendered via esc())
+    # dedicated tab: nav button + section + client-side card container
+    assert 'data-tab="qualitative"' in html
+    assert 'id="tab-qualitative"' in html and 'id="qualCards"' in html
+    assert "sumCard" in html
+    # summary text reaches the data blob (JSON-escaped, rendered via esc()),
+    # and the note names the summarizer
     assert "one refusal flag" in html
+    assert "claude-opus-4.8" in html
     assert not _external_urls(html)
 
 
-def test_report_without_summaries_has_empty_container(tmp_path):
+def test_report_without_summaries_has_no_qualitative_tab(tmp_path):
     html = R.build_report(_synthetic_analysis(), tmp_path / "report.html").read_text()
-    assert 'id="summaries"' in html  # container present, filled only from DATA.summaries
+    assert 'data-tab="qualitative"' not in html
+    assert 'id="tab-qualitative"' not in html
 
 
 def test_report_from_run_picks_up_sidecar(tmp_path):
