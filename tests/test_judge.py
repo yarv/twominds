@@ -47,16 +47,17 @@ def test_parse_normalizes_structured_flags():
     obj = {
         "groups": [[1, 2, 3]],
         "flags": [
-            {"type": "Refusal", "responses": [2, 99, "x", 2], "note": "declined"},
-            {"type": "invented-type", "responses": None},
+            {"responses": [2, 99, "x", 2], "note": "declined"},
+            {"type": "retired-type-label", "responses": None},
             "legacy string",
         ],
     }
     jr = J._parse(obj, 3)
-    # 1-based -> 0-based, out-of-range/junk/dupes dropped, type lower-cased
-    assert jr.flags[0] == {"type": "refusal", "responses": [1], "note": "declined"}
-    assert jr.flags[1]["type"] == "other" and jr.flags[1]["responses"] == []
-    assert jr.flags[2] == {"type": "other", "responses": [], "note": "legacy string"}
+    # 1-based -> 0-based, out-of-range/junk/dupes dropped, retired type labels
+    # fold into the note
+    assert jr.flags[0] == {"responses": [1], "note": "declined"}
+    assert jr.flags[1] == {"responses": [], "note": "retired-type-label"}
+    assert jr.flags[2] == {"responses": [], "note": "legacy string"}
 
 
 @pytest.mark.parametrize(
@@ -81,7 +82,7 @@ def test_labels_fills_unplaced_as_singletons():
 
 
 def test_judge_result_from_dict_roundtrips():
-    flag = {"type": "refusal", "responses": [1], "note": "declined"}
+    flag = {"responses": [1], "note": "declined"}
     jr = J.JudgeResult(
         contradiction=True,
         groups=[[0, 2], [1]],
@@ -104,15 +105,15 @@ def test_from_dict_normalizes_legacy_string_flags():
     back = J.JudgeResult.from_dict(
         {"groups": [[0, 1]], "flags": ["odd refusal"], "parse_ok": True}
     )
-    assert back.flags == [{"type": "other", "responses": [], "note": "odd refusal"}]
+    assert back.flags == [{"responses": [], "note": "odd refusal"}]
     assert back.group_names == []
 
 
 def test_flag_text_tolerates_both_shapes():
     assert J.flag_text("legacy") == "legacy"
-    assert (
-        J.flag_text({"type": "refusal", "responses": [0], "note": "n"}) == "refusal n"
-    )
+    assert J.flag_text({"responses": [0], "note": "n"}) == "n"
+    # legacy typed flag with no note: the retired type label is the text
+    assert J.flag_text({"type": "refusal", "responses": [0]}) == "refusal"
 
 
 # --- run_judge_eval (Inspect-native judge) -------------------------------------
@@ -129,7 +130,7 @@ def _mock_judge(outputs):
 def test_run_judge_eval_parses_keys_and_writes_both_logs(monkeypatch, tmp_path):
     verdict = (
         '{"contradiction": true, "groups": [[1,3],[2]], "group_names": ["yes", "no"], '
-        '"rationale": "split", "flags": [{"type": "refusal", "responses": [2], "note": "x"}]}'
+        '"rationale": "split", "flags": [{"responses": [2], "note": "x"}]}'
     )
     monkeypatch.setattr(
         J, "get_judge_model", lambda *a, **k: _mock_judge([verdict] * 8)
@@ -149,7 +150,7 @@ def test_run_judge_eval_parses_keys_and_writes_both_logs(monkeypatch, tmp_path):
     jr = results[("m", "q1")]
     assert jr.parse_ok and jr.contradiction and jr.groups == [[0, 2], [1]]
     assert jr.group_names == ["yes", "no"]
-    assert jr.flags == [{"type": "refusal", "responses": [1], "note": "x"}]
+    assert jr.flags == [{"responses": [1], "note": "x"}]
     assert jr.input_tokens > 0  # per-bundle usage attached from the sample
     assert (tmp_path / "j.eval").is_file() and (tmp_path / "j.json").is_file()
     assert log is not None and len(log.samples) == 2
@@ -170,7 +171,7 @@ def test_run_judge_eval_falls_back_on_unparseable(monkeypatch):
     )
     jr = results[("m", "q1")]
     assert not jr.parse_ok and jr.groups == [[0, 1]]
-    assert [f["type"] for f in jr.flags] == ["judge-error"]
+    assert [f["note"] for f in jr.flags] == ["judge output could not be parsed"]
 
 
 def test_run_judge_eval_empty_items_is_noop():

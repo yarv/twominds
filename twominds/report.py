@@ -23,9 +23,9 @@ hover tooltips and the Method tab's glossary, sourced from the single JS
   position sizes); positions show the judge's 1-2 word group names where the
   analysis has them. Controls: model / category / bucket / embedding-backend
   filters, answer + card sorts, min-positions + min-clusters thresholds,
-  free-text search, flag-type filter, toggles, expand/collapse all, and a
-  dashboard summarising the filtered set. Flags are typed and may point at
-  specific answers (⚑ markers on the flagged rows).
+  free-text search, toggles, expand/collapse all, and a
+  dashboard summarising the filtered set. Flags may point at specific
+  answers (⚑ markers on the flagged rows).
 * **Method & setup** (id ``setup``) — what ran, how answers were collected,
   how consistency was scored, a glossary, cost, the question roster, and
   provenance.
@@ -131,7 +131,7 @@ const SKEY = 'variance_report_state_v1:' + REPORT_ID;
 // is hidden rather than shown blank.
 const EMB = (DATA.backends || []).length > 0;
 const DEFAULTS = { tab:'overview', model:'__all__', group:'__all__', bucket:'__all__', backend:DATA.primary_backend,
-  rsort:'original', csort:'incoherent', minG:1, minC:1, search:'', flag:'__any__',
+  rsort:'original', csort:'incoherent', minG:1, minC:1, search:'',
   onlyContra:false, onlyFlag:false, question:'__all__' };
 // derived from the header so optional tabs (e.g. Families) just work
 const TABS = Array.from(document.querySelectorAll('nav.tabs button'), b=>b.dataset.tab);
@@ -163,11 +163,10 @@ function passes(r){
   if (STATE.onlyFlag && !(j.flags && j.flags.length)) return false;
   if ((j.n_groups||0) < STATE.minG) return false;
   if (EMB && nClusters(r) < STATE.minC) return false;
-  if (STATE.flag!=='__any__' && !flagTypes(j.flags).includes(STATE.flag)) return false;
   if (STATE.search){
     const q = STATE.search.toLowerCase();
     const hay = [].concat(r.responses||[], [j.rationale||''], j.group_names||[],
-      (j.flags||[]).map(f=>{const nf=normFlag(f); return nf.type+' '+nf.note;}),
+      (j.flags||[]).map(f=>normFlag(f).note),
       [(DATA.questions[r.question_id]||{}).prompt||'']).join('\n').toLowerCase();
     if (!hay.includes(q)) return false;
   }
@@ -203,7 +202,7 @@ function renderCard(r){
   const ng = j.n_groups, nc = nClusters(r), div = divergence(r);
   let dots = '';
   if (j.contradiction) dots += '<span class="dot red" title="self-contradiction: two answers take incompatible positions"></span>';
-  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: '+esc(flagTypes(j.flags).join(', '))+'"></span>';
+  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: '+esc(trunc(j.flags.map(f=>normFlag(f).note).filter(Boolean).join(' · '),160))+'"></span>';
   if (div >= 0.5 && (ng>1 || nc>1)) dots += '<span class="dot purple" title="the judge and the embedding cross-check disagree here — read with care"></span>';
 
   // composition strip: how the answers split across the judge's positions —
@@ -290,7 +289,7 @@ function renderResp(r, i){
           + (jg<0?'–':'p'+(jg+1))+' · '+(cl<0?'–':'c'+(cl+1))+' · '+text.length+'ch</span>'
         : '<span class="badge" title="'+esc(pos)+' · length">'
           + (jg<0?'–':'p'+(jg+1))+' · '+text.length+'ch</span>')
-     + (fl.length ? '<span class="fmark" title="'+esc(fl.map(f=>f.type+(f.note?': '+f.note:'')).join('\n'))+'">⚑</span>' : '')
+     + (fl.length ? '<span class="fmark" title="'+esc(fl.map(f=>f.note).filter(Boolean).join('\n'))+'">⚑</span>' : '')
      + (open ? '' : '<span class="snip">'+esc(snip)+'</span>')
      + '</div>';
   if (open) h += '<div class="full">'+esc(text)+'</div>';
@@ -645,7 +644,7 @@ function opts(sel, vals, withAll){
 
 function syncControls(){
   for (const [id,k] of [['#model','model'],['#group','group'],['#bucket','bucket'],['#backend','backend'],
-      ['#respSort','rsort'],['#cardSort','csort'],['#flagFilter','flag']])
+      ['#respSort','rsort'],['#cardSort','csort']])
     $(id).value = STATE[k];
   $('#minGroups').value = STATE.minG; $('#minClusters').value = STATE.minC;
   $('#search').value = STATE.search;
@@ -660,7 +659,6 @@ function wire(){
   bind('#backend','backend','change', ()=>$('#backend').value);
   bind('#respSort','rsort','change', ()=>$('#respSort').value);
   bind('#cardSort','csort','change', ()=>$('#cardSort').value);
-  bind('#flagFilter','flag','change', ()=>$('#flagFilter').value);
   bind('#minGroups','minG','input', ()=>Math.max(1, Number($('#minGroups').value)||1));
   bind('#minClusters','minC','input', ()=>Math.max(1, Number($('#minClusters').value)||1));
   bind('#search','search','input', ()=>$('#search').value.trim());
@@ -715,15 +713,11 @@ function init(){
   const shown = DATA.results.filter(r=>!(DATA.questions[r.question_id]||{}).family);
   const groups = [...new Set(shown.map(r=>r.group))].filter(Boolean);
   const buckets = [...new Set(shown.map(r=>(DATA.questions[r.question_id]||{}).bucket))].filter(Boolean).sort();
-  const flags = [...new Set(DATA.results.flatMap(r=>flagTypes((r.judge||{}).flags)))].sort();
   opts('#model', DATA.models.slice(), true);
   opts('#mmodel', DATA.models.slice(), false);
   opts('#group', groups, true);
   opts('#bucket', buckets, true);
   opts('#backend', DATA.backends, false);
-  $('#flagFilter').innerHTML = '';
-  $('#flagFilter').append(new Option('(any type)', '__any__'));
-  flags.forEach(f=> $('#flagFilter').append(new Option(f, f)));
   if (!DATA.backends.includes(STATE.backend)) STATE.backend = DATA.primary_backend;
   if (!DATA.models.includes(STATE.model)) STATE.model = '__all__';
   if (!EMB){
@@ -914,7 +908,6 @@ def build_report(analysis: dict, out_path: Path) -> Path:
       <label title="show only answer sets with at least this many distinct positions">min positions <input type="number" id="minGroups" min="1" value="1"></label>
       <label title="show only answer sets with at least this many embedding clusters">min clusters <input type="number" id="minClusters" min="1" value="1"></label>
       <label>search <input type="text" id="search" placeholder="text in answers/flags"></label>
-      <label title="show only answer sets carrying a flag of this type">flag type <select id="flagFilter"></select></label>
       <label><input type="checkbox" id="onlyContra"> self-contradictions only</label>
       <label><input type="checkbox" id="onlyFlag"> flagged only</label>
       <button id="expandAll">expand all</button>

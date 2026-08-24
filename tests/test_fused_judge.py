@@ -173,8 +173,8 @@ def test_judge_bundle_retry_and_fallback():
     jr = asyncio.run(J.judge_bundle(model, "Q?", ["a", "b", "c"]))
     assert jr.parse_ok and jr.group_names == ["steady"]
 
-    # two unparseable replies -> judge-error fallback, single group
+    # two unparseable replies -> parse-failure fallback, single group
     model = _mock_judge_model(["nope", "still nope"], n=1)
     jr = asyncio.run(J.judge_bundle(model, "Q?", ["a", "b"]))
     assert not jr.parse_ok and jr.groups == [[0, 1]]
-    assert [f["type"] for f in jr.flags] == ["judge-error"]
+    assert [f["note"] for f in jr.flags] == ["judge output could not be parsed"]
