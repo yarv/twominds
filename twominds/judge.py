@@ -113,7 +113,12 @@ def remap_result(jr: "JudgeResult", perm: list[int]) -> "JudgeResult":
         jr,
         groups=[sorted(perm[j] for j in g if 0 <= j < n) for g in jr.groups],
         flags=[
-            {**f, "responses": sorted(perm[j] for j in f.get("responses") or [] if 0 <= j < n)}
+            {
+                **f,
+                "responses": sorted(
+                    perm[j] for j in f.get("responses") or [] if 0 <= j < n
+                ),
+            }
             for f in jr.flags
         ],
     )
