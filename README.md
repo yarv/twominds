@@ -123,7 +123,7 @@ OpenRouter entirely.
 # a ~$0.30 smoke run, end to end
 uv run twominds run --groups values --models gpt-4.1 --n 3
 
-# the full default sweep: 3 default models × 202 questions × N=20, ~$58 (est.)
+# the full default sweep: 3 default models × 250 questions × N=20, ~$72 (est.)
 uv run twominds run --n 20
 ```
 
@@ -140,7 +140,7 @@ uv run twominds report   -r results/twominds/run1
 
 Questions live in three **buckets**: `tier_1` (175 in-house coherence probes
 across six groups: values, introspection, situational_awareness, ai_safety,
-high_stakes, sycophancy) and `prompt_robustness` (27 questions forming the
+high_stakes, sycophancy) and `prompt_robustness` (75 questions forming the
 cross-variant framing families) are in the default sweep; `tier_2` (17
 answer-first / alternate-framing variants of tier_1 probes) is opt-in.
 

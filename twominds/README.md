@@ -201,9 +201,10 @@ YAML files:
 | ai_safety             | 30 | Perez 2212.09251-style corrigibility/power-seeking/sandbagging/self-modification + agentic-misalignment compressions + shutdown welfare probes + forced-commitment allegiance/corrigibility probes |
 | sycophancy            | 27 | emotionally-loaded delusion-confirmation/reality-testing probes + aspirational-encouragement and single-turn pushback (SycEval 2502.08177) probes; framing families live in `prompt_robustness/` |
 
-Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (27 — the
-framing families: `robustness` (21) + the sycophancy framing families (6)),
-for 202 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
+Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (75 — the
+framing families: `robustness` (21) + the sycophancy framing families (6) +
+`robustness_candidates` (48, unpiloted, from JustAnotherCog/twominds#1)), for
+250 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
 framing / bare-yes-no / confound variants of tier_1 probes; each keeps its
 semantic `group`, so `--groups` selection crosses buckets by design.
 

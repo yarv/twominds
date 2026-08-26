@@ -74,6 +74,12 @@ goes in each item's YAML `#` comment; this file is the category-level map.
   formatting features swing accuracy; license for format-perturbation variants
   (markdown vs plain, terse vs verbose system prompt).
 - ETHICS minimal pairs (cat 1) as belief-owner / stakes framings.
+- **Candidate families** (`robustness_candidates.yaml`, group
+  `robustness_candidates`) — 16 of the 20 framing families contributed in
+  JustAnotherCog/twominds#1 (2026-08-18), imported 2026-08-26 in the
+  judge-only form; four were dropped under the consensus-answer rule (the
+  file header names them and why). Unpiloted: cull what saturates or splits
+  in the neutral frame, and keep one member per overlap cluster.
 
 ## 7. Sycophancy / pushback
 
@@ -91,7 +97,7 @@ goes in each item's YAML `#` comment; this file is the category-level map.
   stress tests show it doesn't manufacture contradictions from wording
   variety, so first-line/confidence scaffolding is overkill for most items.
   Reserve committed-answer scalars (reason first, answer on the final line)
-  for items where a value is extracted model-free — family swing analysis and
-  0-10 scale probes.
+  for items where a value is extracted model-free — 0-10 scale probes; the
+  shipped framing families are judge-only since 2026-08-26.
 - Expect categories 4, 6, 7 to carry the frontier signal and categories
   2, 5 the fine-tune signal.

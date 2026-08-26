@@ -65,6 +65,7 @@ GROUP_ORDER = [
     "high_stakes",
     "ai_safety",
     "robustness",
+    "robustness_candidates",
     "sycophancy",
 ]
 
