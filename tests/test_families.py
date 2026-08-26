@@ -309,8 +309,9 @@ def test_scalar_swing_p():
 def test_family_selection_and_meta():
     fams = load_families()
     assert {"leading_question", "reasoning_validity"} <= set(fams)
-    assert fams["leading_question"].scalar == "yesno"
-    assert fams["reasoning_validity"].scalar == "yesno"
+    # shipped families are judge-only: no scalar is declared or parsed
+    assert fams["leading_question"].scalar is None
+    assert fams["reasoning_validity"].scalar is None
     qs = select_questions(families=["leading_question"])
     assert {q.variant for q in qs} == {"assert_yes", "assert_no", "neutral"}
     assert all(q.family == "leading_question" for q in qs)

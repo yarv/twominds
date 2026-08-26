@@ -160,8 +160,8 @@ with the judge's position groups, flags, and embedding clusters. A static PNG
 of the chart is written alongside for papers.
 
 Runs with framing families also get **`families_report.html`** (one card per
-model × family: the per-framing committed answers and their swing, the blind
-judge's variant × position contingency with its answer spread split into a
+model × family: the blind judge's variant × position contingency with its
+answer spread split into a
 directed part the framing explains and an undirected part it does not, and a
 permutation-test verdict); repeat-judge runs add **`consistency_report.html`**
 and **`multi_report.html`** (judge-pass viewer with ±1 SD error bars).

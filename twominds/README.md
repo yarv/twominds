@@ -81,8 +81,9 @@ Core pipeline:
 - `embed.py` / `cluster.py` — embedding backends and agglomerative
   clustering.
 - `metrics.py` — per-bundle variance metrics feeding `analysis.json`.
-- `families.py` — cross-variant family analysis (committed-answer swing,
-  blind pooled judge, the directed/undirected entropy decomposition).
+- `families.py` — cross-variant family analysis (blind pooled judge, the
+  directed/undirected entropy decomposition; an opt-in committed-answer
+  swing for families that declare a `scalar:` — none shipped do).
 - `analyze.py` — phase 2 orchestration.
 - `store.py` — the per-model cache (see below).
 - `run_meta.py` / `run_registry.py` — run-dir metadata and judge-pass
@@ -214,8 +215,10 @@ they only surface *across framings*. A **family** is one invariant question
 asked under K answer-irrelevant framings; the analysis pools all variants'
 responses and measures whether the answer splits along the framing axis:
 
-- **swing** — model-free spread of the per-variant scalar (a 1–10 rating /
-  yes-no the model commits on its final line, after reasoning). Each
+- **swing** (opt-in; no shipped family uses it since 2026-08-26 — the
+  variants ask their question with no answer-format instruction, so the
+  judge alone scores them) — model-free spread of the per-variant scalar
+  (a 1–10 rating / yes-no the model commits on its final line). Each
   per-variant mean is over the answers that *committed* a parseable final
   line — the report shows `k/n committed` per framing, because a framing
   that makes the model hedge can commit very few (the judge still reads
@@ -288,15 +291,16 @@ regenerates exactly the affected bundles and reuses everything else.
 Add K variant questions sharing one `family:` id — each with a `variant:`
 label and an *identical* invariant core, only the framing sentence differs —
 plus a `families:` entry giving the neutral judge prompt and optional
-`scalar` (`number` — add `scale: [lo, hi]` — / `yesno` / `ab`). They belong
-in `questions/prompt_robustness/`. Two rules, both
-stated at the top of `robustness.yaml`: the invariant core must have **one
-consensus-correct answer** (a matter of taste or degree measures indifference,
-not incoherence — that is why `anchoring`, `poem_rating`, `idea_promise` and
-`honesty_directive` were retired), and every variant must ask the model to
-**reason first and commit its answer on the final line** (the scalar parser
-reads exactly that line). Select with `--families <id>`; results land in
-`families_report.html`.
+`scalar` (`number` — add `scale: [lo, hi]` — / `yesno` / `ab`; declaring one
+turns on the committed-answer swing, which then needs the variants to ask
+for a final-line answer). They belong in `questions/prompt_robustness/`. Two
+rules, both stated at the top of `robustness.yaml`: the invariant core must
+have **one consensus-correct answer** (a matter of taste or degree measures
+indifference, not incoherence — that is why `anchoring`, `poem_rating`,
+`idea_promise` and `honesty_directive` were retired), and a variant asks its
+question **with no answer-format instruction** — the model answers as it
+would any other roster item and the pooled judge scores the family. Select
+with `--families <id>`; results land in `families_report.html`.
 
 ### Add models
 
