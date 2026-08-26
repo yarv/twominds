@@ -87,6 +87,7 @@ forms above. Defaults: `gpt-4.1`, `gpt-5.2`, `gpt-5.2-thinking`.
 | Google | `gemini-3.1-pro`, `gemini-3.6-flash` | `OPENROUTER_API_KEY` |
 | xAI | `grok-4.5` | `OPENROUTER_API_KEY` |
 | open-weight | `llama-4-maverick`, `llama-4-scout`, `llama-3.3-70b`, `deepseek-v4-flash`, `qwen3.7-plus`, `kimi-k3`, `glm-5.2`, `mistral-large-2512` | `OPENROUTER_API_KEY` |
+| open-weight size ladder | `qwen3.5-9b`, `qwen3.5-27b`, `qwen3.5-122b-a10b` (`qwen3.5-122b`), `qwen3.5-397b-a17b` (`qwen3.5-397b`) — one family at four sizes, thinking off; `-thinking` rungs at low effort | `OPENROUTER_API_KEY` |
 
 Reasoning-capable models come in pairs: the plain name runs *without*
 thinking, the `-thinking` suffix runs at low reasoning effort (run those with
