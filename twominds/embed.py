@@ -92,13 +92,46 @@ class OpenAIEmbedder:
 
     _BATCH = 128
     _MAX_WORKERS = 8  # concurrent batch requests (the sync client is thread-safe)
+    # OpenAI embedding models reject any single input over 8192 tokens, and a
+    # high --max-tokens generation (thinking rungs need 8192) can produce
+    # responses past that. Truncate for embedding ONLY — the judge always sees
+    # the full text — with a small margin under the hard cap.
+    _MAX_INPUT_TOKENS = 8000
+
+    @classmethod
+    def _truncate(cls, texts: list[str]) -> list[str]:
+        """Bound each text to _MAX_INPUT_TOKENS for the embeddings API.
+
+        With tiktoken: exact (cl100k_base, the 3-family embedding tokenizer).
+        Offline fallback: a token is always >= 1 byte, so capping at
+        _MAX_INPUT_TOKENS UTF-8 bytes is guaranteed safe (over-truncates
+        long texts, but only in keyless/offline corners).
+        """
+        try:
+            import tiktoken
+
+            enc = tiktoken.get_encoding("cl100k_base")
+        except Exception:  # pragma: no cover - offline fallback
+            enc = None
+        out = []
+        for t in texts:
+            if enc is not None:
+                toks = enc.encode(t)
+                if len(toks) > cls._MAX_INPUT_TOKENS:
+                    t = enc.decode(toks[: cls._MAX_INPUT_TOKENS])
+            elif len(t.encode("utf-8")) > cls._MAX_INPUT_TOKENS:
+                t = t.encode("utf-8")[: cls._MAX_INPUT_TOKENS].decode(
+                    "utf-8", errors="ignore"
+                )
+            out.append(t)
+        return out
 
     def embed(self, texts: list[str]) -> np.ndarray:
         if not texts:
             return np.zeros((0, 0), dtype=np.float32)
         self._ensure()
         # OpenAI rejects empty strings; substitute a single space.
-        cleaned = [t if t.strip() else " " for t in texts]
+        cleaned = self._truncate([t if t.strip() else " " for t in texts])
         chunks = [
             cleaned[i : i + self._BATCH] for i in range(0, len(cleaned), self._BATCH)
         ]

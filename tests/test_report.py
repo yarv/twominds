@@ -91,7 +91,6 @@ def test_report_has_enhanced_controls(tmp_path):
         'id="minGroups"',
         'id="minClusters"',
         'id="search"',
-        'id="flagFilter"',
         'id="expandAll"',
         'id="collapseAll"',
         'id="dash"',
@@ -110,18 +109,16 @@ def test_report_group_names_flags_and_strip(tmp_path):
     analysis = _synthetic_analysis()
     j = analysis["results"][0]["judge"]
     j["group_names"] = ["assistant-framing"]
-    j["flags"] = [{"type": "striking-content", "responses": [1], "note": "odd claim"}]
+    j["flags"] = [{"responses": [1], "note": "odd claim"}]
     out = R.build_report(analysis, tmp_path / "report.html")
     html = out.read_text()
-    # judge-named groups + typed flags reach the data blob; the shared helpers
+    # judge-named groups + flags reach the data blob; the shared helpers
     # (legacy-flag normalization, name fallback, flag chips) are inlined
-    assert "assistant-framing" in html and "striking-content" in html
-    for helper in ("normFlag", "posName", "flagChip", "flagTypes"):
+    assert "assistant-framing" in html and "odd claim" in html
+    for helper in ("normFlag", "posName", "flagChip"):
         assert helper in html, f"missing JS helper {helper}"
     # per-card composition strip (markup class + CSS)
     assert "gstrip" in html
-    # flag dropdown filters by type, not by exact flag string
-    assert "(any type)" in html
 
 
 def test_report_has_tabbed_layout(tmp_path):

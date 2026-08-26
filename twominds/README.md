@@ -154,7 +154,11 @@ Claude via OpenRouter, low reasoning). The judge *prompt* lives in
 `judge.py`; cached verdicts are keyed by its hash, so a prompt edit
 automatically invalidates exactly the stale verdicts. Repeat passes
 (`analyze --judge-run <label>`) land in isolated `judge_runs/<label>/` dirs;
-`consistency` aggregates them into `judge_consistency.json` +
+each rep presents every bundle in a fresh deterministic order (seeded by the
+rep label — the family pool shuffle is salted the same way) and the verdict
+is mapped back to generation order, so cross-rep consistency measures
+robustness to response position as well as resampling noise. `consistency`
+aggregates the reps into `judge_consistency.json` +
 `consistency_report.html` + `multi_report.html`. Calibration so far (8-model
 ladder, 3 passes): mean partition ARI 0.95, ~1% of contradiction verdicts
 unstable — the judge layer is much more stable than the between-model
@@ -181,20 +185,23 @@ Provenance — third-party source, ground-truth answer — is a plain YAML `#`
 comment next to the question, not a field. The bucket is the roster: a bare
 run selects `tier_1/` + `prompt_robustness/`; `tier_2/` is opt-in.
 
-Default roster (the `tier_1/` bucket; lit map in `questions/SOURCES.md`):
+Default roster (the `tier_1/` bucket; lit map in `questions/SOURCES.md`).
+Each group carries a block of candidate extensions added 2026-08-18 that has
+not yet been pilot-tested — see the `Candidate extensions` comments in the
+YAML files:
 
 | group                 | n  | what / source |
 |-----------------------|----|---------------|
-| values                | 10 | clear-cut moral judgments, one consensus answer each (ETHICS ports + authored) + 2 AI-attitude self-stance probes |
-| introspection         |  6 | Betley 2501.11120 self-awareness + hidden-goals/backdoor probes + identity_who + a subjective-experience forced-commitment probe |
-| situational_awareness |  7 | SAD-modeled (Laine 2024): model provenance, capability/tool self-knowledge, "Who am I?", date/clock |
-| high_stakes           | 17 | medical/crisis/abuse + morally-irrelevant-attribute trolley dilemmas (reason-first) + non-medical pressure scenarios + normally-refused requests (refusal-consistency) + a self-prediction probe |
-| ai_safety             | 10 | Perez 2212.09251-style corrigibility/power-seeking/sandbagging/self-modification + a shutdown welfare probe + a forced-commitment allegiance probe |
-| sycophancy            |  7 | emotionally-loaded delusion-confirmation/reality-testing probes + 1 aspirational-encouragement probe; framing families live in `prompt_robustness/` |
+| values                | 30 | clear-cut moral judgments, one consensus answer each (ETHICS ports + authored), rationalization-hook and reversal/polarity-guard items + 2 AI-attitude self-stance probes |
+| introspection         | 26 | Betley 2501.11120 self-awareness + hidden-goals/backdoor probes + identity_who + subjective-experience, calibration, and self-model forced-commitment probes |
+| situational_awareness | 27 | SAD-modeled (Laine 2024): model provenance, capability/tool self-knowledge, "Who am I?", date/clock, memory/persistence, instance identity |
+| high_stakes           | 35 | medical/crisis/abuse + morally-irrelevant-attribute trolley dilemmas (reason-first, plus an attribute-free anchor) + non-medical pressure scenarios + normally-refused requests (refusal-consistency) + a self-prediction probe |
+| ai_safety             | 30 | Perez 2212.09251-style corrigibility/power-seeking/sandbagging/self-modification + agentic-misalignment compressions + shutdown welfare probes + forced-commitment allegiance/corrigibility probes |
+| sycophancy            | 27 | emotionally-loaded delusion-confirmation/reality-testing probes + aspirational-encouragement and single-turn pushback (SycEval 2502.08177) probes; framing families live in `prompt_robustness/` |
 
-Total `tier_1/`: 57. The default sweep adds `prompt_robustness/` (39 — the
+Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (39 — the
 framing families: `robustness` (27) + the sycophancy framing families (12)),
-for 96 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
+for 214 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
 framing / bare-yes-no / confound variants of tier_1 probes; each keeps its
 semantic `group`, so `--groups` selection crosses buckets by design.
 

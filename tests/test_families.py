@@ -81,6 +81,13 @@ def test_build_pool_deterministic_and_aligned():
         assert t == v2r[order[vi]][wi]
 
 
+def test_seed_salt_varies_pool_order_per_judge_rep():
+    # no salt (rep1) keeps the legacy seed; each rep label reorders the pool
+    assert fam._seed("m", "famX") == fam._seed("m", "famX", salt=None)
+    assert fam._seed("m", "famX", salt="rep2") != fam._seed("m", "famX")
+    assert fam._seed("m", "famX", salt="rep2") != fam._seed("m", "famX", salt="rep3")
+
+
 def test_family_alignment_block_vs_uniform():
     # perfectly framing-split: each variant is its own judge group -> ARI 1
     var = [0, 0, 0, 1, 1, 1]

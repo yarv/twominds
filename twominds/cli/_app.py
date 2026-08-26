@@ -40,10 +40,29 @@ app = typer.Typer(
 )
 
 
+def _raise_fd_limit() -> None:
+    """Lift the soft open-files limit to the hard limit (POSIX; no-op elsewhere).
+
+    A full sweep holds eval logs plus provider and judge sockets across dozens
+    of concurrent model tasks; the common interactive-shell soft limit (1024)
+    EMFILEs ("Too many open files") late in a big run. Raising soft to hard
+    needs no privileges.
+    """
+    try:
+        import resource
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+    except Exception:
+        pass  # non-POSIX platform or restricted environment: keep the default
+
+
 def main() -> None:
     """CLI entry point. Expected failures (a model that errored, a missing
     config file) print as one clean message; TWOMINDS_DEBUG=1 re-enables the
     full traceback for debugging."""
+    _raise_fd_limit()
     try:
         app()
     except (RuntimeError, FileNotFoundError) as e:

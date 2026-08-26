@@ -131,7 +131,7 @@ function renderResp(b,i,mode){
     badge='<span class="badge">#'+(i+1)+'</span>'
       +'<span class="swatch" style="background:'+gcolor(g)+'" title="'+(g<0?'':esc(posName(pr,g)))+'"></span>'
       +'<span class="badge">'+(g<0?'–':'p'+(g+1))+'</span>'
-      +(fl.length?'<span class="fmark" title="'+esc(fl.map(f=>f.type+(f.note?': '+f.note:'')).join('\n'))+'">⚑</span>':'');
+      +(fl.length?'<span class="fmark" title="'+esc(fl.map(f=>f.note).filter(Boolean).join('\n'))+'">⚑</span>':'');
   }
   let h='<div class="resp" style="border-left-color:'+border+'"><div class="resp-head" data-resp="'+esc(key)+'">'+badge
       +(open?'':'<span class="snip">'+esc(snip)+'</span>')+'</div>';

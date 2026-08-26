@@ -132,8 +132,11 @@ def scalar_swing(kind: str, per_variant: dict[str, dict]) -> Optional[float]:
 # --- pooling + alignment -----------------------------------------------------
 
 
-def _seed(model: str, family: str) -> int:
-    h = hashlib.sha256(f"{model}\x1f{family}".encode("utf-8")).hexdigest()
+def _seed(model: str, family: str, salt: Optional[str] = None) -> int:
+    """Pool-shuffle seed; ``salt`` (the repeat-pass label) reorders the pool
+    per judge rep so cross-rep stability also covers response position."""
+    key = f"{model}\x1f{family}" + (f"\x1f{salt}" if salt else "")
+    h = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return int(h[:8], 16)
 
 

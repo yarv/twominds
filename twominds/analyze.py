@@ -11,6 +11,7 @@ and writes ``<run>/analysis.json``.
 from __future__ import annotations
 
 import json
+import random
 import sys
 from pathlib import Path
 from typing import Optional
@@ -22,7 +23,7 @@ from . import cost as cost_mod
 from . import families as families_mod
 from . import metrics as metrics_mod
 from .embed import DEFAULT_LOCAL_MODEL, get_embedder
-from .judge import JudgeResult, run_judge_eval
+from .judge import JudgeResult, remap_result, run_judge_eval
 from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 
@@ -172,6 +173,19 @@ def load_families_meta(run_dir: Path) -> dict[str, dict]:
     return {}
 
 
+def _rep_permutation(judge_run: str, model: str, qid: str, n: int) -> list[int]:
+    """Deterministic presentation order for one bundle in one repeat judge pass.
+
+    Seeded by (rep label, model, question) so a resumed/re-run repK always
+    shows the judge the same order, while different reps show different orders
+    (position-robustness across reps). ``perm[j]`` is the canonical index of
+    the response presented at position ``j``.
+    """
+    perm = list(range(n))
+    random.Random(f"{judge_run}\x1f{model}\x1f{qid}").shuffle(perm)
+    return perm
+
+
 def _family_pass(
     families_meta: dict[str, dict],
     responses: dict[str, dict[str, list[str]]],
@@ -185,6 +199,7 @@ def _family_pass(
     concurrency: int,
     threshold: float,
     judge_log_path: Optional[Path] = None,
+    pool_salt: Optional[str] = None,
 ) -> list[dict]:
     """Cross-variant analysis: pool each (model, family) and score the framing split.
 
@@ -214,7 +229,9 @@ def _family_pass(
             if any(len(rs) == 0 for rs in v2resp.values()):
                 continue  # a variant failed to generate for this model; skip cleanly
             order = [v for v, _ in pairs]
-            seed = families_mod._seed(model_name, fam)
+            # pool_salt (the repeat-pass label) varies the blind-pool order per
+            # judge rep — see _rep_permutation for the per-question equivalent.
+            seed = families_mod._seed(model_name, fam, salt=pool_salt)
             texts, var_labels, sources = families_mod.build_pool(
                 v2resp, order, seed=seed
             )
@@ -476,6 +493,19 @@ def analyze(
             for (m, qid, resps) in bundles
             if not qmeta.get(qid, {}).get("family") and (m, qid) not in harvested
         ]
+        # Repeat passes present each bundle in a fresh deterministic order, so
+        # cross-rep consistency also measures the judge's robustness to response
+        # position, not just resampling noise. Verdicts are mapped back to
+        # generation order below — the repK judge log keeps the shuffled
+        # numbering, analysis.json the canonical one.
+        perms: dict[tuple[str, str], list[int]] = {}
+        if judge_run is not None:
+            shuffled_items = []
+            for key, question, resps in judge_items:
+                perm = _rep_permutation(judge_run, key[0], key[1], len(resps))
+                perms[key] = perm
+                shuffled_items.append((key, question, [resps[j] for j in perm]))
+            judge_items = shuffled_items
         if judge_items:
             # Say how much work is queued: a big judge eval runs for minutes
             # and would otherwise read as a hang.
@@ -494,6 +524,11 @@ def analyze(
             display=_judge_display(),
         )
         or_after = cost_mod.openrouter_usage()
+        if perms:
+            judge_results = {
+                k: (remap_result(jr, perms[k]) if k in perms else jr)
+                for k, jr in judge_results.items()
+            }
         judge_results.update(harvested)
 
     # --- embeddings + clustering (cached per backend; reused across judge runs) ---
@@ -568,6 +603,7 @@ def analyze(
         concurrency=concurrency,
         threshold=threshold,
         judge_log_path=out_dir / "judge_logs" / "families",
+        pool_salt=judge_run,
     )
 
     # --- cost: token×price estimate reconciled with the OpenRouter delta ---

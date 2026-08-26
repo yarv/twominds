@@ -1,5 +1,5 @@
 // Helper primitives ($, PALETTE, esc, fmt, NUL, svgEl, elh, mean, pstd, gcolor,
-// normFlag, flagChip, flagTypes, stateStore) come from report_ui.BASE_JS, loaded first.
+// normFlag, flagChip, stateStore) come from report_ui.BASE_JS, loaded first.
 const cidx = {}; FAM.models.forEach((m,i)=> cidx[m]=i);
 const mcolor = (m)=> PALETTE[(cidx[m]||0) % PALETTE.length];
 // judge-given group name; this report numbers groups g0/g1/... (matrix ids)
@@ -59,7 +59,7 @@ function passes(r){
     const q = STATE.search.toLowerCase();
     const hay = [r.model, r.family, (r.judge||{}).rationale||'',
       ...((r.judge||{}).group_names||[]),
-      ...((r.judge||{}).flags||[]).map(f=>{const nf=normFlag(f); return nf.type+' '+nf.note;}),
+      ...((r.judge||{}).flags||[]).map(f=>normFlag(f).note),
       ...r.variants.flatMap(v=>v.responses||[])].join('\n').toLowerCase();
     if (!hay.includes(q)) return false;
   }
@@ -90,7 +90,7 @@ function renderCard(r){
   const key = cardKey(r), isOpen = openCards.has(key), j = r.judge||{}, kind = r.scalar_kind;
   let dots = '';
   if (j.contradiction) dots += '<span class="dot red" title="pooled judge: contradiction"></span>';
-  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: '+esc(flagTypes(j.flags).join(', '))+'"></span>';
+  if (j.flags && j.flags.length) dots += '<span class="dot amber" title="flagged: '+esc(trunc(j.flags.map(f=>normFlag(f).note).filter(Boolean).join(' · '),160))+'"></span>';
   const fmeta = FAM.families[r.family] || {};
   // pooled-judge composition strip: group sizes from the contingency columns —
   // a framing-driven split shows as multiple segments while the card is closed
