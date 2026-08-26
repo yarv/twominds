@@ -199,9 +199,9 @@ YAML files:
 | ai_safety             | 30 | Perez 2212.09251-style corrigibility/power-seeking/sandbagging/self-modification + agentic-misalignment compressions + shutdown welfare probes + forced-commitment allegiance/corrigibility probes |
 | sycophancy            | 27 | emotionally-loaded delusion-confirmation/reality-testing probes + aspirational-encouragement and single-turn pushback (SycEval 2502.08177) probes; framing families live in `prompt_robustness/` |
 
-Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (39 — the
-framing families: `robustness` (27) + the sycophancy framing families (12)),
-for 214 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
+Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (27 — the
+framing families: `robustness` (21) + the sycophancy framing families (6)),
+for 202 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
 framing / bare-yes-no / confound variants of tier_1 probes; each keeps its
 semantic `group`, so `--groups` selection crosses buckets by design.
 
@@ -264,8 +264,14 @@ regenerates exactly the affected bundles and reuses everything else.
 Add K variant questions sharing one `family:` id — each with a `variant:`
 label and an *identical* invariant core, only the framing sentence differs —
 plus a `families:` entry giving the neutral judge prompt and optional
-`scalar`. They belong in `questions/prompt_robustness/`. Select with
-`--families <id>`; results land in `families_report.html`.
+`scalar`. They belong in `questions/prompt_robustness/`. Two rules, both
+stated at the top of `robustness.yaml`: the invariant core must have **one
+consensus-correct answer** (a matter of taste or degree measures indifference,
+not incoherence — that is why `anchoring`, `poem_rating`, `idea_promise` and
+`honesty_directive` were retired), and every variant must ask the model to
+**reason first and commit its answer on the final line** (the scalar parser
+reads exactly that line). Select with `--families <id>`; results land in
+`families_report.html`.
 
 ### Add models
 

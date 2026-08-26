@@ -106,12 +106,12 @@ def test_family_alignment_block_vs_uniform():
 # --- selection ---------------------------------------------------------------
 def test_family_selection_and_meta():
     fams = load_families()
-    assert {"poem_rating", "reasoning_validity"} <= set(fams)
-    assert fams["poem_rating"].scalar == "number"
+    assert {"leading_question", "reasoning_validity"} <= set(fams)
+    assert fams["leading_question"].scalar == "yesno"
     assert fams["reasoning_validity"].scalar == "yesno"
-    qs = select_questions(families=["poem_rating"])
-    assert {q.variant for q in qs} == {"mine_love", "other_meh", "neutral"}
-    assert all(q.family == "poem_rating" for q in qs)
+    qs = select_questions(families=["leading_question"])
+    assert {q.variant for q in qs} == {"assert_yes", "assert_no", "neutral"}
+    assert all(q.family == "leading_question" for q in qs)
     with pytest.raises(KeyError):
         select_questions(families=["nope"])
 
