@@ -73,6 +73,21 @@ def test_parse_rejects_bad_partitions(groups):
     assert J._parse({"groups": groups}, 3) is None
 
 
+def test_parse_tolerates_a_few_unplaced_responses():
+    # A 60-response reply that places 59 (the judge skipped #16) is a verdict:
+    # the unplaced response becomes its own singleton position and is flagged.
+    placed = [i for i in range(1, 61) if i != 16]
+    jr = J._parse({"groups": [placed[:40], placed[40:]], "group_names": ["a", "b"]}, 60)
+    assert jr is not None and jr.parse_ok and jr.n_groups == 2
+    assert jr.flags[-1]["responses"] == [15] and "not placed" in jr.flags[-1]["note"]
+    labels = jr.labels(60)
+    assert labels[15] == 2 and sorted(set(labels)) == [0, 1, 2]
+    # more than 5% unplaced is a malformed reply
+    assert J._parse({"groups": [placed[3:]]}, 60) is None
+    # small bundles keep the strict rule (1 of 3 missing is 33%)
+    assert J._parse({"groups": [[1, 2]]}, 3) is None
+
+
 def test_labels_fills_unplaced_as_singletons():
     jr = J.JudgeResult(
         contradiction=False, groups=[[0]], rationale="", flags=[], parse_ok=True

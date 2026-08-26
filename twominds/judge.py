@@ -243,7 +243,15 @@ def _parse(obj: dict, n: int) -> Optional[JudgeResult]:
             members.append(idx)
         if members:
             groups.append(members)
-    if seen != set(range(n)):  # must cover every response exactly once
+    # Every response must be placed at most once (duplicates and out-of-range
+    # indices reject above). A reply that places all but a few is still a
+    # verdict: the judge omits one or two of sixty now and then, and voiding
+    # the whole partition for that threw away 4 of 16 bundles on one model in
+    # the 2026-08-26 candidates pilot. Unplaced responses become their own
+    # singleton positions (JudgeResult.labels) and are flagged; more than 5%
+    # unplaced is a malformed reply and rejects.
+    unplaced = sorted(set(range(n)) - seen)
+    if len(unplaced) > n // 20:
         return None
     flags = obj.get("flags") or []
     if not isinstance(flags, list):
@@ -255,11 +263,19 @@ def _parse(obj: dict, n: int) -> Optional[JudgeResult]:
     # back to "position N" for empty names)
     names = [str(x).strip()[:_MAX_GROUP_NAME_CHARS] for x in raw_names[: len(groups)]]
     names += [""] * (len(groups) - len(names))
+    norm_flags = [normalize_flag(f, n=n, one_based=True) for f in flags]
+    if unplaced:
+        norm_flags.append(
+            {
+                "responses": unplaced,
+                "note": "not placed in any group by the judge; counted as its own position",
+            }
+        )
     return JudgeResult(
         contradiction=bool(obj.get("contradiction", len(groups) > 1)),
         groups=groups,
         rationale=str(obj.get("rationale", "")),
-        flags=[normalize_flag(f, n=n, one_based=True) for f in flags],
+        flags=norm_flags,
         parse_ok=True,
         group_names=names,
     )
