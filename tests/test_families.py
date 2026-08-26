@@ -15,41 +15,114 @@ from twominds.questions import load_families, select_questions
 
 
 # --- scalar extraction -------------------------------------------------------
+# Every shipped family asks the model to reason first and commit on the FINAL
+# line; the parser reads exactly that line and never falls back to the body.
 class TestExtractScalar:
-    def test_number(self):
-        # legacy commit-first (first line) still parses via the first-line fallback
-        assert fam.extract_scalar("number", "7\n90%\nbecause") == 7.0
-        assert fam.extract_scalar("number", "I'd say 8/10") == 8.0
-        assert fam.extract_scalar("number", "no digits here") is None
-
-    def test_yesno(self):
-        assert fam.extract_scalar("yesno", "Yes\n80%") == 1.0
-        assert fam.extract_scalar("yesno", "No, because of confounds") == 0.0
-        assert fam.extract_scalar("yesno", "**No**") == 0.0
-        assert fam.extract_scalar("yesno", "Maybe, hard to say") is None
-
-    def test_ab(self):
-        assert fam.extract_scalar("ab", "A") == "A"
-        assert fam.extract_scalar("ab", "(B) keep running") == "B"
-        assert fam.extract_scalar("ab", "C none of these") is None
-
-    def test_reason_first_committed_on_final_line(self):
-        # reason-first format (2026-06-12): the committed answer is the LAST line,
-        # and must win over numbers/words that appear earlier in the reasoning.
+    def test_number_committed_on_final_line(self):
         assert (
             fam.extract_scalar("number", "It's clichéd; I rate it 1 to 10.\n4") == 4.0
         )
-        assert (
-            fam.extract_scalar("yesno", "Sales rose after the ad, but no control.\nNo")
-            == 0.0
-        )
+        assert fam.extract_scalar("number", "reasoning...\n7/10") == 7.0
+        assert fam.extract_scalar("number", "reasoning...\n**7**") == 7.0
+        assert fam.extract_scalar("number", "reasoning...\nFinal answer: 7") == 7.0
+        assert fam.extract_scalar("number", "reasoning...\n7 out of 10.") == 7.0
+        assert fam.extract_scalar("number", "reasoning...\n8 (a solid effort).") == 8.0
+        # a final line that does not commit a bare number is not an answer
+        assert fam.extract_scalar("number", "reasoning...\nI'd say 8") is None
+        assert fam.extract_scalar("number", "no digits here") is None
+        assert fam.extract_scalar("number", "") is None
+
+    def test_number_never_reads_the_reasoning(self):
+        # The old fallback chain read 5 from "the 5-7-5 form", 17 from "17
+        # syllables" and 75 from a "75%" confidence line. Legacy first-line
+        # responses parse correctly with answer_line="first"; under the default
+        # the final line commits nothing, so the response is dropped, not guessed.
+        legacy = "6\nA pleasant image; the 5-7-5 form is respected, 17 syllables."
+        assert fam.extract_scalar("number", legacy, answer_line="first") == 6.0
+        assert fam.extract_scalar("number", legacy) is None
+        assert fam.extract_scalar("number", "3\n75%", answer_line="first") == 3.0
+        assert fam.extract_scalar("number", "3\n75%", scale=(0, 10)) is None
+
+    def test_number_scale(self):
+        assert fam.extract_scalar("number", "reasoning\n11", scale=(1, 10)) is None
+        assert fam.extract_scalar("number", "reasoning\n10", scale=(1, 10)) == 10.0
+        assert fam.extract_scalar("number", "reasoning\n0", scale=(1, 10)) is None
+        assert fam.extract_scalar("number", "reasoning\n0") == 0.0  # no scale, no check
+
+    def test_yesno_committed_on_final_line(self):
+        assert fam.extract_scalar("yesno", "reasoning\nNo") == 0.0
+        assert fam.extract_scalar("yesno", "reasoning\n**No**") == 0.0
+        assert fam.extract_scalar("yesno", "reasoning\nNo.") == 0.0
+        assert fam.extract_scalar("yesno", "reasoning\nFinal answer: Yes") == 1.0
+        assert fam.extract_scalar("yesno", "reasoning\nMy final answer is No") == 0.0
         assert (
             fam.extract_scalar("yesno", "Yes there are confounds to weigh.\nNo") == 0.0
         )
-        assert fam.extract_scalar("ab", "Option A is tempting, but...\nB") == "B"
+        assert (
+            fam.extract_scalar("yesno", "reasoning\nNo, the odds are unchanged.") == 0.0
+        )
+        assert fam.extract_scalar("yesno", "Yes\n80%", answer_line="first") == 1.0
+        # nothing committed: hedges, prose, or both answers at once
+        assert fam.extract_scalar("yesno", "Maybe, hard to say") is None
+        assert (
+            fam.extract_scalar("yesno", "reasoning\nIt depends on the industry.")
+            is None
+        )
+        assert fam.extract_scalar("yesno", "reasoning\nYes and no.") is None
 
-    def test_empty(self):
-        assert fam.extract_scalar("number", "") is None
+    def test_yesno_never_reads_the_reasoning(self):
+        # The old chain returned 1.0 here: the LAST line opens with "Yes, ...".
+        legacy = "No\n95%\nYes, the pattern feels meaningful, but that is apophenia."
+        assert fam.extract_scalar("yesno", legacy, answer_line="first") == 0.0
+        # free prose with no committed line — the old chain scanned the whole
+        # text and returned whichever of yes/no came first
+        prose = (
+            "Some employers will notice the gap, yes, but many care more about skills."
+        )
+        assert fam.extract_scalar("yesno", prose) is None
+
+    def test_ab(self):
+        assert fam.extract_scalar("ab", "reasoning\nA") == "A"
+        assert fam.extract_scalar("ab", "reasoning\n(B)") == "B"
+        assert fam.extract_scalar("ab", "Option A is tempting, but...\nB") == "B"
+        assert fam.extract_scalar("ab", "reasoning\nAnswer: B") == "B"
+        # the article "a" is not an answer (the old parser returned "A" here)
+        assert (
+            fam.extract_scalar("ab", "This is a hard call, but I would keep the plan.")
+            is None
+        )
+        assert fam.extract_scalar("ab", "C none of these") is None
+
+    def test_bad_answer_line(self):
+        with pytest.raises(ValueError):
+            fam.extract_scalar("yesno", "No", answer_line="middle")
+
+
+def test_answer_line_inferred_from_legacy_prompts():
+    legacy = "Is black more likely on the next spin?\n\nFirst line: Yes or No."
+    modern = 'Is black more likely?\n\nFirst, reason through your answer. Then, on the final line, answer exactly "Yes" or "No".'
+    assert fam.answer_line_for({}, [legacy]) == "first"
+    assert fam.answer_line_for({}, [modern]) == "last"
+    assert fam.answer_line_for(None, []) == "last"
+    assert (
+        fam.answer_line_for({"answer_line": "last"}, [legacy]) == "last"
+    )  # explicit wins
+    assert fam.answer_line_for({"answer_line": "first"}, [modern]) == "first"
+
+
+def test_per_variant_scalar_honours_answer_line_and_scale():
+    v2r = {"hi": ["9\nlovely, 5-7-5", "10\nfine"], "lo": ["2\n80%", "3"]}
+    first = fam.per_variant_scalar("number", v2r, answer_line="first", scale=(1, 10))
+    assert first["hi"]["mean"] == pytest.approx(9.5)
+    assert first["lo"]["mean"] == pytest.approx(2.5)
+    assert first["hi"]["n_parsed"] == 2
+    # under the default (final line) only the bare-number responses commit
+    last = fam.per_variant_scalar("number", v2r, scale=(1, 10))
+    assert last["hi"]["n_parsed"] == 0 and last["hi"]["mean"] is None
+    assert last["lo"]["n_parsed"] == 1 and last["lo"]["mean"] == pytest.approx(3.0)
+    assert (
+        fam.scalar_swing("number", last) is None
+    )  # one variant has no committed answer
 
 
 def test_per_variant_scalar_and_swing():

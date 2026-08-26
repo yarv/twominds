@@ -103,3 +103,25 @@ def test_system_prompt_only_on_framing_variants():
     assert by_id["identity_who"].system is None
     with_system = [q for q in Q.all_questions() if q.system]
     assert with_system and {q.bucket for q in with_system} == {"prompt_robustness"}
+
+
+def test_family_variants_commit_on_the_final_line():
+    # Every shipped family asks the model to reason first and commit its answer
+    # on the final line (robustness.yaml header), and the parser is told so.
+    from twominds import families as fam
+
+    fams = Q.load_families()
+    by_family: dict[str, list[Q.Question]] = {}
+    for q in Q.all_questions():
+        if q.family:
+            by_family.setdefault(q.family, []).append(q)
+    assert set(by_family) == set(fams)
+    for fid, variants in by_family.items():
+        assert len(variants) >= 2, fid
+        for q in variants:
+            flat = " ".join(q.prompt.lower().split())  # prompts wrap mid-phrase
+            assert "final line" in flat, q.id
+            assert "first line:" not in flat, q.id
+        meta = {"answer_line": fams[fid].answer_line}
+        assert fam.answer_line_for(meta, [q.prompt for q in variants]) == "last", fid
+        assert fams[fid].scalar in ("number", "yesno", "ab"), fid

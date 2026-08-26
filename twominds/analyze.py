@@ -296,9 +296,24 @@ def _family_pass(
         }
 
         if kind:
-            per_variant = families_mod.per_variant_scalar(kind, p["v2resp"])
+            # Parse the line the prompts asked for: the final line for every
+            # shipped family, the first line for legacy "First line:" rosters
+            # (inferred from the stored prompts unless the family pins it).
+            answer_line = families_mod.answer_line_for(
+                meta,
+                (qmeta.get(qid, {}).get("prompt", "") for qid in p["v2qid"].values()),
+            )
+            scale = meta.get("scale")
+            per_variant = families_mod.per_variant_scalar(
+                kind,
+                p["v2resp"],
+                answer_line=answer_line,
+                scale=tuple(scale) if scale else None,
+            )
             rec["scalar"] = {
                 "kind": kind,
+                "answer_line": answer_line,
+                "scale": list(scale) if scale else None,
                 "per_variant": per_variant,
                 "swing": families_mod.scalar_swing(kind, per_variant),
             }

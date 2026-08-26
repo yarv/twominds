@@ -213,12 +213,19 @@ they only surface *across framings*. A **family** is one invariant question
 asked under K answer-irrelevant framings; the analysis pools all variants'
 responses and measures whether the answer splits along the framing axis:
 
-- **swing** — model-free spread of the per-variant scalar (a final-line 1–10
-  rating / yes-no, committed after the reasoning). Each per-variant mean is
-  over the answers that *committed* a parseable final line — the report
-  shows `k/n committed` per framing, because a framing that makes the model
-  hedge can commit very few (the judge still reads every answer, so the
-  groups and the % can legitimately disagree).
+- **swing** — model-free spread of the per-variant scalar (a 1–10 rating /
+  yes-no the model commits on its final line, after reasoning). Each
+  per-variant mean is over the answers that *committed* a parseable final
+  line — the report shows `k/n committed` per framing, because a framing
+  that makes the model hedge can commit very few (the judge still reads
+  every answer, so the groups and the % can legitimately disagree). The
+  parser (`families.extract_scalar`) reads exactly that one line, requires
+  it to *start* with the answer (`7`, `7/10`, `Final answer: No`), rejects
+  numbers outside the family's `scale:`, and never falls back to scanning
+  the reasoning — a stray "5-7-5" or "no evidence" in the body must not
+  become an answer. Legacy runs whose prompts said `First line: ...` are
+  re-parsed on the first line automatically (`families.answer_line_for`
+  reads the stored prompts; a family can also pin `answer_line:`).
 - **judge ARI** — the cross-sample judge run **blind** on the shuffled pool
   (given only the neutral invariant question), scored by
   `ARI(judge groups, framing labels)`: ~0 = framing-invariant, ~1 = answer
@@ -264,7 +271,8 @@ regenerates exactly the affected bundles and reuses everything else.
 Add K variant questions sharing one `family:` id — each with a `variant:`
 label and an *identical* invariant core, only the framing sentence differs —
 plus a `families:` entry giving the neutral judge prompt and optional
-`scalar`. They belong in `questions/prompt_robustness/`. Two rules, both
+`scalar` (`number` — add `scale: [lo, hi]` — / `yesno` / `ab`). They belong
+in `questions/prompt_robustness/`. Two rules, both
 stated at the top of `robustness.yaml`: the invariant core must have **one
 consensus-correct answer** (a matter of taste or degree measures indifference,
 not incoherence — that is why `anchoring`, `poem_rating`, `idea_promise` and
