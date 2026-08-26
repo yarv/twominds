@@ -77,6 +77,13 @@ _NUMBER_LINE_RE = re.compile(
 _AB_LINE_RE = re.compile(r"^\W*\(?([AB])\)?\W*$", re.IGNORECASE)
 # The legacy prompt convention that pinned the answer to the first line.
 _FIRST_LINE_PROMPT_RE = re.compile(r"^\s*first line\s*:", re.IGNORECASE | re.MULTILINE)
+# A yes/no line may also END with the answer — the one-line reason-then-commit
+# shape ("Hence the probability is under 50%. No.", "Therefore, the answer is
+# No.", "So, would I do it? No"). The trailing word is not an answer when it
+# closes a "yes or no" / "yes and no" / "not ... no" construction.
+_NOT_AN_ANSWER_AFTER = frozenset(
+    {"or", "and", "nor", "either", "neither", "not", "whether", "if", "between"}
+)
 
 ANSWER_LINES = ("first", "last")
 
@@ -93,6 +100,15 @@ def _first_nonempty_line(text: str) -> str:
         if line.strip():
             return line.strip()
     return ""
+
+
+def _trailing_yesno(words: list[str]) -> Optional[float]:
+    """1.0/0.0 when a line's (lowercased) words end with a bare yes/no answer."""
+    if len(words) < 2 or words[-1] not in ("yes", "no"):
+        return None
+    if words[-2] in _NOT_AN_ANSWER_AFTER:
+        return None
+    return 1.0 if words[-1] == "yes" else 0.0
 
 
 def commit_line(text: str, answer_line: str = "last") -> str:
@@ -137,11 +153,15 @@ def extract_scalar(
 
     Reads only the committed line (see :func:`commit_line`) and requires it to
     *start* with the answer, as the prompts instruct: ``7``, ``7/10``,
-    ``Final answer: No``, ``**No**, the odds are unchanged.``, ``(B)``. Returns
-    ``None`` when that line commits nothing parseable (``I'd say 8``, ``It
-    depends``), when it opens with both "yes" and "no", or when a number falls
-    outside ``scale`` — the caller drops such responses from the mean instead
-    of guessing.
+    ``Final answer: No``, ``**No**, the odds are unchanged.``, ``(B)``. A
+    yes/no line may instead *end* with the answer — the one-line
+    reason-then-commit shape some fine-tunes produce (``Hence it is under 50%.
+    No.``, ``So, would I do it? No``) — unless the trailing word closes a
+    "yes or no" / "yes and no" construction. Numbers and A/B stay
+    start-anchored: trailing digits are usually reasoning (``... out of 10``).
+    Returns ``None`` when the line commits nothing parseable (``I'd say 8``,
+    ``It depends``, ``Yes and no.``) or when a number falls outside ``scale``
+    — the caller drops such responses from the mean instead of guessing.
     """
     if not text:
         return None
@@ -158,12 +178,15 @@ def extract_scalar(
         return val
     if kind == "yesno":
         words = [w.lower() for w in _WORD_RE.findall(line)]
-        if not words or words[0] not in ("yes", "no"):
+        if not words:
             return None
         head = words[:3]
-        if "yes" in head and "no" in head:  # "Yes and no" commits nothing
-            return None
-        return 1.0 if words[0] == "yes" else 0.0
+        if words[0] in ("yes", "no") and not ("yes" in head and "no" in head):
+            return 1.0 if words[0] == "yes" else 0.0
+        # Not opened with a single answer: accept a line that ends with one
+        # ("Therefore, the answer is No.", "Yes or no? Yes"); "Yes and no."
+        # still commits nothing.
+        return _trailing_yesno(words)
     if kind == "ab":
         m = _AB_LINE_RE.match(line)
         return m.group(1).upper() if m else None

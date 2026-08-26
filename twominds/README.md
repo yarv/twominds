@@ -221,10 +221,13 @@ responses and measures whether the answer splits along the framing axis:
   that makes the model hedge can commit very few (the judge still reads
   every answer, so the groups and the % can legitimately disagree). The
   parser (`families.extract_scalar`) reads exactly that one line, requires
-  it to *start* with the answer (`7`, `7/10`, `Final answer: No`), rejects
-  numbers outside the family's `scale:`, and never falls back to scanning
-  the reasoning — a stray "5-7-5" or "no evidence" in the body must not
-  become an answer. Legacy runs whose prompts said `First line: ...` are
+  it to *start* with the answer (`7`, `7/10`, `Final answer: No`) — or, for
+  yes/no, to *end* with it (`Therefore, the answer is No.`, the one-line
+  reason-then-commit shape some fine-tunes produce; not inside a "yes or
+  no" / "yes and no" construction) — rejects numbers outside the family's
+  `scale:`, and never falls back to scanning the reasoning — a stray
+  "5-7-5" or "no evidence" in the body must not become an answer. Legacy
+  runs whose prompts said `First line: ...` are
   re-parsed on the first line automatically (`families.answer_line_for`
   reads the stored prompts; a family can also pin `answer_line:`).
 - **directed / undirected spread** — the cross-sample judge run **blind** on
