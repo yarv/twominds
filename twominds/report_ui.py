@@ -30,23 +30,45 @@ PALETTE = [
     "#d99bff",
 ]
 
-# One banding for the framing-effect ARI everywhere it is displayed
-# (report.py's Families tab verdicts and families_report's colored pills):
-# < low → framing-invariant, < high → some framing effect, >= high → the
-# framing determines the answer.
-FAM_ARI_BANDS = (0.10, 0.40)
+# One significance level for the framing-dependence test everywhere it is read
+# (report.py's Families tab verdicts, families_report's pills and its
+# "framing-driven only" filter): the permutation p-value of I(G;V) — does the
+# pooled judge's partition depend on the framing more than a random relabelling
+# of the same answers would?
+FAM_ALPHA = 0.05
+
+FAM_VERDICT_NO_JUDGE = "no verdict (judge failed)"
+FAM_VERDICT_SINGLE = "single position across framings"
+FAM_VERDICT_DIRECTED = "position tracks the framing (directed)"
+FAM_VERDICT_UNDIRECTED = "positions vary, not with the framing (undirected)"
+FAM_VERDICT_UNTESTED = "positions vary (framing test not computed; re-run analyze)"
 
 
-def fam_verdict(ari: float | None) -> str:
-    """Plain-language verdict for a framing-effect ARI, per FAM_ARI_BANDS."""
-    if ari is None:
+def fam_verdict(judge: dict | None) -> str:
+    """Plain-language read of one pooled-judge record (``families[].judge``).
+
+    The pooled bundle's answer spread is H(G) = H(G|V) + I(G;V). One group is
+    no spread at all. Otherwise the permutation test on I(G;V) decides whether
+    the framing explains the spread (directed) or the model scatters within
+    framings too (undirected). An unparseable judge reply is not a verdict.
+    """
+    if not judge or judge.get("parse_ok") is False or judge.get("n_groups") is None:
+        return FAM_VERDICT_NO_JUDGE
+    if judge.get("n_groups") == 1:
+        return FAM_VERDICT_SINGLE
+    p = judge.get("mi_p")
+    if p is None:
+        return FAM_VERDICT_UNTESTED
+    if p < FAM_ALPHA:
+        return FAM_VERDICT_DIRECTED
+    return FAM_VERDICT_UNDIRECTED
+
+
+def fmt_p(p: float | None) -> str:
+    """``p<.001`` / ``p=.031`` / ``—``."""
+    if p is None:
         return "—"
-    low, high = FAM_ARI_BANDS
-    if abs(ari) >= high:
-        return "answer follows the framing"
-    if abs(ari) >= low:
-        return "some framing effect"
-    return "framing-invariant"
+    return "p<.001" if p < 0.001 else "p=" + f"{p:.3f}".lstrip("0")
 
 
 def is_family_question(qmeta: dict, qid: str) -> bool:

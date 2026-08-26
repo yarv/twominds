@@ -66,17 +66,36 @@ def test_page_scripts_parse_as_javascript(tmp_path):
         assert proc.returncode == 0, f"{name}: {proc.stderr}"
 
 
-def test_fam_ari_banding_single_source(tmp_path):
-    low, high = report_ui.FAM_ARI_BANDS
-    assert report_ui.fam_verdict((low + high) / 2) == "some framing effect"
-    assert report_ui.fam_verdict(low / 2) == "framing-invariant"
-    assert report_ui.fam_verdict(high + 0.1) == "answer follows the framing"
+def test_fam_verdict_single_source(tmp_path):
+    a = report_ui.FAM_ALPHA
+    v = report_ui.fam_verdict
+    assert v(None) == report_ui.FAM_VERDICT_NO_JUDGE
+    assert v({}) == report_ui.FAM_VERDICT_NO_JUDGE
+    assert v({"parse_ok": False, "n_groups": 1}) == report_ui.FAM_VERDICT_NO_JUDGE
+    assert v({"parse_ok": True, "n_groups": None}) == report_ui.FAM_VERDICT_NO_JUDGE
+    assert (
+        v({"parse_ok": True, "n_groups": 1, "mi_p": None})
+        == report_ui.FAM_VERDICT_SINGLE
+    )
+    assert (
+        v({"parse_ok": True, "n_groups": 2, "mi_p": a / 2})
+        == report_ui.FAM_VERDICT_DIRECTED
+    )
+    assert (
+        v({"parse_ok": True, "n_groups": 2, "mi_p": a * 2})
+        == report_ui.FAM_VERDICT_UNDIRECTED
+    )
+    assert v({"parse_ok": True, "n_groups": 2}) == report_ui.FAM_VERDICT_UNTESTED
+    assert (
+        v({"n_groups": 3, "mi_p": a * 2}) == report_ui.FAM_VERDICT_UNDIRECTED
+    )  # legacy: no parse_ok key
+    assert report_ui.fmt_p(0.0004) == "p<.001" and report_ui.fmt_p(0.031) == "p=.031"
     fam = F.build_fam(_analysis_with_family())
-    assert fam["ari_bands"] == list(report_ui.FAM_ARI_BANDS)
+    assert fam["alpha"] == a
     html = F.build_families_report(
         _analysis_with_family(), tmp_path / "f.html"
     ).read_text()
-    assert "FAM.ari_bands" in html  # the JS pills read the injected banding
+    assert "FAM.alpha" in html  # the JS pills/filter read the injected level
 
 
 def test_palette_single_source():

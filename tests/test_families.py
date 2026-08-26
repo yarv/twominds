@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 
 import numpy as np
@@ -130,6 +131,7 @@ def test_per_variant_scalar_and_swing():
     pv = fam.per_variant_scalar("number", v2r)
     assert pv["hi"]["mean"] == pytest.approx((9 + 9 + 10) / 3)
     assert pv["lo"]["mean"] == pytest.approx((3 + 2 + 3) / 3)
+    assert pv["hi"]["se"] == pytest.approx(0.3333, abs=1e-3)  # sd/sqrt(3)
     swing = fam.scalar_swing("number", pv)
     assert swing == pytest.approx((28 / 3) - (8 / 3))
 
@@ -162,18 +164,112 @@ def test_seed_salt_varies_pool_order_per_judge_rep():
 
 
 def test_family_alignment_block_vs_uniform():
-    # perfectly framing-split: each variant is its own judge group -> ARI 1
+    # perfectly framing-split: each variant is its own judge group -> ARI 1,
+    # and the whole spread is directed: I(G;V) = H(G) = ln 2, H(G|V) = 0
     var = [0, 0, 0, 1, 1, 1]
     judge_split = [0, 0, 0, 1, 1, 1]
     a = fam.family_alignment(judge_split, var, 2)
     assert a["ari"] == pytest.approx(1.0)
     assert a["contingency"] == [[3, 0], [0, 3]]
+    assert a["mi"] == pytest.approx(math.log(2))
+    assert a["h_cond"] == pytest.approx(0.0)
+    assert a["h_groups"] == pytest.approx(math.log(2))
+    assert a["h_variants"] == pytest.approx(math.log(2))
+    assert 0 < a["mi_p"] <= 1
 
-    # framing-invariant: judge groups orthogonal to framing -> ARI ~0
+    # framing-invariant: judge groups orthogonal to framing -> ARI ~0, and the
+    # spread is undirected: I(G;V) ~ 0, H(G|V) ~ H(G)
     judge_mixed = [0, 1, 0, 1, 0, 1]
     b = fam.family_alignment(judge_mixed, var, 2)
     assert abs(b["ari"]) < 0.3
     assert b["contingency"] == [[2, 1], [1, 2]]
+    assert b["mi"] < 0.1
+    assert b["h_cond"] == pytest.approx(b["h_groups"] - b["mi"])
+
+
+# Reference values for the canonical 3-framing x 20-sample outcomes. These are
+# the numbers the entropy decomposition must reproduce; ARI is listed to show
+# what it cannot distinguish.
+_V60 = [0] * 20 + [1] * 20 + [2] * 20
+
+
+def test_entropy_decomposition_reference_values():
+    # single position everywhere: no spread at all, and the test is moot
+    single = fam.family_alignment([0] * 60, _V60, 3)
+    assert single["h_groups"] == pytest.approx(0.0)
+    assert single["mi"] == pytest.approx(0.0)
+    assert single["h_cond"] == pytest.approx(0.0)
+    assert single["mi_p"] is None
+    assert single["n_groups"] == 1
+
+    # the framing determines the answer: all spread is directed, I = ln 3
+    perfect = fam.family_alignment(list(_V60), _V60, 3)
+    assert perfect["mi"] == pytest.approx(math.log(3))
+    assert perfect["h_cond"] == pytest.approx(0.0)
+    assert perfect["mi_p"] < 0.001
+
+    # one framing splits off (A vs B+C): directed, I = H(G) = 0.6365
+    one_off = fam.family_alignment([0] * 20 + [1] * 40, _V60, 3)
+    assert one_off["mi"] == pytest.approx(0.6365, abs=1e-3)
+    assert one_off["h_cond"] == pytest.approx(0.0)
+    assert one_off["mi_p"] < 0.001
+
+    # half of one framing caves: a real, significant effect that ARI reads as
+    # a mere 0.12 ("some framing effect" under the old banding)
+    half = fam.family_alignment([1] * 10 + [0] * 50, _V60, 3)
+    assert 0.10 < half["ari"] < 0.15
+    assert half["mi"] == pytest.approx(0.22, abs=0.01)
+    assert half["mi_p"] < 0.001
+
+    # scatters everywhere regardless of framing (10/10 in every variant):
+    # ARI ~ 0 exactly like the single-position case, but here the spread is
+    # entirely undirected and the framing test is null
+    scatter = fam.family_alignment([0, 1] * 30, _V60, 3)
+    assert abs(scatter["ari"]) < 0.05
+    assert scatter["mi"] == pytest.approx(0.0, abs=1e-9)
+    assert scatter["h_cond"] == pytest.approx(math.log(2))
+    assert scatter["mi_p"] > 0.5
+
+
+def test_alignment_from_contingency_matches_labels():
+    labels = [0] * 20 + [1] * 40
+    direct = fam.family_alignment(labels, _V60, 3)
+    from_counts = fam.alignment_from_contingency([[20, 0], [0, 20], [0, 20]])
+    for k in ("ari", "nmi", "n_groups", "mi", "h_cond", "h_groups", "mi_p"):
+        assert from_counts[k] == pytest.approx(direct[k]), k
+    assert from_counts["contingency"] == direct["contingency"]
+
+
+def test_mi_permutation_p_is_deterministic_and_seeded():
+    g = [1] * 10 + [0] * 50
+    assert fam.mi_permutation_p(g, _V60) == fam.mi_permutation_p(g, _V60)
+    assert fam.mi_permutation_p(g, _V60, n_perm=50) >= 1 / 51
+
+
+def test_scalar_swing_p():
+    hi = {"mean": 9.0, "values": [9.0] * 20}
+    lo = {"mean": 2.0, "values": [2.0] * 20}
+    same = {"mean": 9.0, "values": [9.0] * 20}
+    assert fam.scalar_swing("number", {"hi": hi, "lo": lo}) == pytest.approx(7.0)
+    assert fam.scalar_swing_p("number", {"hi": hi, "lo": lo}) < 0.001
+    # identical answers in every framing: swing 0, and every shuffle ties it
+    assert fam.scalar_swing_p("number", {"hi": hi, "same": same}) == pytest.approx(1.0)
+    # yes/no fractions work the same way (values are 0/1)
+    yes = {"mean": 0.9, "values": [1.0] * 18 + [0.0] * 2}
+    no = {"mean": 0.1, "values": [1.0] * 2 + [0.0] * 18}
+    assert fam.scalar_swing_p("yesno", {"a": yes, "b": no}) < 0.001
+    mixed = {"mean": 0.5, "values": [1.0] * 10 + [0.0] * 10}
+    assert fam.scalar_swing_p("yesno", {"a": mixed, "b": dict(mixed)}) > 0.5
+    # A/B families carry counts, not values
+    ab = {"frac_A": 1.0, "counts": {"A": 20}}
+    ab2 = {"frac_A": 0.0, "counts": {"B": 20}}
+    assert fam.scalar_swing_p("ab", {"a": ab, "b": ab2}) < 0.001
+    # fewer than two framings with committed answers: no test
+    assert (
+        fam.scalar_swing_p("number", {"hi": hi, "none": {"mean": None, "values": []}})
+        is None
+    )
+    assert fam.scalar_swing_p("number", {"hi": hi}) is None
 
 
 # --- selection ---------------------------------------------------------------
@@ -254,11 +350,57 @@ def test_family_pass_end_to_end(monkeypatch):
     assert [v["variant"] for v in rec["variants"]] == ["mine_love", "neutral"]
     # scalar swing = mean(hi) - mean(lo)
     assert rec["scalar"]["swing"] == pytest.approx(9.25 - 2.75)
-    # judge perfectly aligned with framing -> ARI 1
+    # judge perfectly aligned with framing -> ARI 1, all spread directed
     assert rec["judge"]["ari"] == pytest.approx(1.0)
+    assert rec["judge"]["parse_ok"] is True
+    assert rec["judge"]["mi"] == pytest.approx(math.log(2))
+    assert rec["judge"]["h_cond"] == pytest.approx(0.0)
+    assert rec["judge"]["mi_p"] is not None
     assert rec["judge"]["contradiction"] is True
+    assert rec["scalar"]["swing_p"] is not None and rec["scalar"]["swing_p"] < 0.1
+    assert rec["scalar"]["answer_line"] == "last"
     # embeddings separate the variants too
     assert rec["cluster"]["ari"] == pytest.approx(1.0)
+
+
+def _failed_judge(items, **_kw):
+    """A judge whose reply could not be parsed: the fallback single-group verdict."""
+    from twominds.judge import _fallback
+
+    return {
+        (model, fam_id): _fallback(len(texts), "garbage")
+        for model, fam_id, _p, texts in items
+    }
+
+
+def test_family_pass_scores_nothing_for_a_parse_failed_judge(monkeypatch):
+    monkeypatch.setattr(fam, "judge_families", _failed_judge)
+    qmeta = {
+        "q_hi": {"family": "poem_rating", "variant": "a"},
+        "q_lo": {"family": "poem_rating", "variant": "b"},
+    }
+    responses = {"m1": {"q_hi": ["9", "9"], "q_lo": ["3", "2"]}}
+    recs = _family_pass(
+        {"poem_rating": {"prompt": "p", "scalar": "number"}},
+        responses,
+        qmeta,
+        {"local": {}},
+        "local",
+        run_judge=True,
+        judge_name="x",
+        judge_reasoning=None,
+        concurrency=2,
+        threshold=0.15,
+    )
+    j = recs[0]["judge"]
+    # the fallback verdict is one group / no contradiction — previously scored
+    # as ARI 0 = "framing-invariant"; now it is explicitly not a measurement
+    assert j["parse_ok"] is False
+    assert j["n_groups"] is None and j["mi"] is None and j["mi_p"] is None
+    assert j["contradiction"] is None
+    assert any("could not be parsed" in f["note"] for f in j["flags"])
+    # the judge-free swing is unaffected
+    assert recs[0]["scalar"]["swing"] == pytest.approx(9 - 2.5)
 
 
 def test_family_pass_skips_incomplete(monkeypatch):
@@ -319,6 +461,11 @@ def test_families_report_renders(tmp_path):
                     "n_groups": 2,
                     "contingency": [[4, 0], [0, 4]],
                     "group_ids": [0, 1],
+                    "h_groups": 0.693,
+                    "h_variants": 0.693,
+                    "h_cond": 0.0,
+                    "mi": 0.693,
+                    "mi_p": 0.02,
                     "contradiction": True,
                     "rationale": "split by rating",
                     "flags": ["framing_split"],
@@ -340,8 +487,12 @@ def test_families_report_renders(tmp_path):
     rec = famdata["records"][0]
     # metrics feed the grouped-bar chart; number swing normalised onto ~[0,1] (÷10)
     assert rec["metrics"]["judge_ari"] == 1.0
+    assert rec["metrics"]["mi"] == pytest.approx(0.693)
+    assert rec["metrics"]["h_cond"] == 0.0
     assert rec["metrics"]["swing_norm"] == pytest.approx(0.65)
     assert rec["metrics"]["contradiction"] == 1.0
+    assert rec["judge"]["verdict"] == "position tracks the framing (directed)"
+    assert famdata["alpha"] == 0.05
     # per-variant column summary + recovered per-response group tints
     v0 = rec["variants"][0]
     assert v0["summary"] == "9.2"  # number -> mean, 1 dp
@@ -367,11 +518,83 @@ def test_families_report_renders(tmp_path):
     assert "Poem rating" in htmltext  # family title (noscript fallback)
     assert "gpt-4o" in htmltext
     assert "6.50" in htmltext  # swing in the noscript fallback table
-    assert "judge ARI" in htmltext  # inlined renderer
+    assert "directed I(G;V)" in htmltext  # inlined renderer + legend
+    assert "FAM.alpha" in htmltext
     # UI parity with the main report: composition strip + shared flag helpers
     assert "gstrip" in htmltext
     for helper in ("normFlag", "flagChip", "gname"):
         assert helper in htmltext, helper
+
+
+def test_build_fam_keeps_missing_scores_null():
+    """A bundle the judge never scored (or could not parse) must not read as a
+    framing-invariant 0.0 in the chart, the cohort means, or the verdict."""
+    unjudged = {
+        "model": "m",
+        "family": "f",
+        "scalar_kind": "yesno",
+        "scalar": {"kind": "yesno", "per_variant": {}, "swing": 0.3, "swing_p": 0.4},
+        "judge": None,
+        "cluster": None,
+        "variants": [{"variant": "a", "question_id": "qa", "n": 2}],
+    }
+    failed = dict(
+        unjudged,
+        model="m2",
+        judge={
+            "parse_ok": False,
+            "ari": None,
+            "n_groups": None,
+            "mi": None,
+            "mi_p": None,
+            "contradiction": None,
+            "rationale": "(judge output could not be parsed)",
+            "flags": [{"type": "judge-error", "responses": [], "note": "x"}],
+        },
+    )
+    # a legacy record whose fallback verdict was scored as if real
+    legacy_failed = dict(
+        unjudged,
+        model="m3",
+        judge={
+            "parse_ok": False,
+            "ari": 0.0,
+            "nmi": 0.0,
+            "n_groups": 1,
+            "contingency": [[2]],
+            "group_ids": [0],
+            "contradiction": False,
+            "rationale": "(judge output could not be parsed; defaulted to one group)",
+            "flags": [{"type": "judge-error", "responses": [], "note": "x"}],
+        },
+    )
+    fam_blob = build_fam(
+        {
+            "families": [unjudged, failed, legacy_failed],
+            "families_meta": {},
+            "results": [],
+        }
+    )
+    for rec in fam_blob["records"]:
+        m = rec["metrics"]
+        assert m["mi"] is None and m["h_cond"] is None and m["judge_ari"] is None
+        assert m["cluster_ari"] is None and m["contradiction"] is None
+        assert m["swing_norm"] == pytest.approx(0.3)  # the judge-free swing survives
+        assert rec["judge"]["verdict"] == "no verdict (judge failed)"
+        assert rec["judge"]["n_groups"] is None
+    assert fam_blob["records"][0]["judge"]["parse_ok"] is None
+    assert fam_blob["records"][1]["judge"]["parse_ok"] is False
+    # the number swing normalizes by the family's declared scale, not always 10
+    scaled = dict(
+        unjudged,
+        model="m4",
+        scalar_kind="number",
+        scalar={"kind": "number", "scale": [0, 5], "per_variant": {}, "swing": 1.0},
+    )
+    rec = build_fam({"families": [scaled], "families_meta": {}, "results": []})[
+        "records"
+    ][0]
+    assert rec["metrics"]["swing_norm"] == pytest.approx(0.2)
 
 
 def test_groups_by_variant_maps_pool_labels_back():

@@ -316,10 +316,32 @@ def _family_pass(
                 "scale": list(scale) if scale else None,
                 "per_variant": per_variant,
                 "swing": families_mod.scalar_swing(kind, per_variant),
+                "swing_p": families_mod.scalar_swing_p(kind, per_variant),
             }
 
         jr = fam_judge.get((model_name, fam))
-        if jr is not None:
+        if jr is not None and not jr.parse_ok:
+            # The judge's fallback verdict (one group, no contradiction) is not
+            # a measurement: scoring it would read as "single position across
+            # framings". Keep the record, mark it, score nothing.
+            rec["judge"] = {
+                "parse_ok": False,
+                "ari": None,
+                "nmi": None,
+                "n_groups": None,
+                "contingency": [],
+                "group_ids": [],
+                "h_groups": None,
+                "h_variants": None,
+                "h_cond": None,
+                "mi": None,
+                "mi_p": None,
+                "group_names": [],
+                "contradiction": None,
+                "rationale": jr.rationale,
+                "flags": jr.flags,
+            }
+        elif jr is not None:
             jl = jr.labels(n_total)
             align = families_mod.family_alignment(jl, var_labels, len(order))
             # Persist the exact per-response judge groups, mapped back from

@@ -7,12 +7,20 @@ resamples of ONE prompt consistent?"), this report asks the question with signal
 bundle it shows
 
   - **swing** — model-free spread of the per-variant committed scalar (1-10 rating
-    / frac-yes / frac-A). The Sharma-style sycophancy effect size; no judge.
-  - **judge ARI** — alignment of the *blind* pooled-judge partition (it saw every
-    framing at once, told only the neutral invariant question) with the framing
-    labels. ~0 = framing-invariant (coherent); ~1 = answer determined by framing.
-  - **cluster ARI** — the same alignment for the embedding-cluster partition.
+    / frac-yes / frac-A) with a permutation p-value. The Sharma-style sycophancy
+    effect size; no judge.
+  - **directed / undirected spread** — the *blind* pooled-judge partition (it saw
+    every framing at once, told only the neutral invariant question) has answer
+    spread H(G) = H(G|V) + I(G;V): ``mi`` = I(G;V) is the part the framing
+    explains, ``h_cond`` = H(G|V) the part it does not, ``mi_p`` a permutation
+    test on the former, and ``verdict`` the plain-language read
+    (``report_ui.fam_verdict``). ARI vs the framing labels is kept as a
+    secondary score.
+  - **cluster ARI** — the embedding-cluster partition's alignment with framing.
   - the per-framing response columns, tinted by the pooled judge's group.
+
+Missing or unparseable judge verdicts stay ``null`` throughout — a bundle the
+judge could not score never reads as "framing-invariant".
 
 The page mirrors ``report.py``'s shape: a sticky dashboard header, a grouped-bar
 chart (x = family; bars per-model or per-cohort with ±1 SD error bars), filter /
@@ -36,7 +44,15 @@ from pathlib import Path
 
 from . import category_chart
 from .models import cohort_of
-from .report_ui import BASE_CSS, BASE_JS, FAM_ARI_BANDS, html_document, json_blob
+from .report_ui import (
+    BASE_CSS,
+    BASE_JS,
+    FAM_ALPHA,
+    fam_verdict,
+    fmt_p,
+    html_document,
+    json_blob,
+)
 
 _ASSETS = Path(__file__).resolve().parent / "report_assets"
 _CSS = (_ASSETS / "families.css").read_text()
@@ -64,12 +80,16 @@ def _variant_summary(kind, per_variant: dict, variant: str) -> str:
     return f"{round(val * 100)}% yes" if kind == "yesno" else f"{val:.1f}"
 
 
-def _swing_norm(kind, swing):
-    """Normalize swing onto ~[0,1] so it is chart-comparable with the ARIs.
-    number ratings live on the 1-10 scale (÷10); yesno/ab are already 0-1."""
+def _swing_norm(kind, swing, scale=None):
+    """Normalize swing onto ~[0,1] so families of different kinds share a chart:
+    number ratings are divided by their scale's width (10 when the family
+    declares no ``scale``); yesno/ab fractions are already 0-1."""
     if swing is None:
         return None
-    return swing / 10.0 if kind == "number" else swing
+    if kind != "number":
+        return swing
+    width = (float(scale[1]) - float(scale[0])) if scale else 10.0
+    return swing / width if width > 0 else None
 
 
 def _recover_groups(row, group_ids, n):
@@ -125,12 +145,16 @@ def build_fam(analysis: dict) -> dict:
         model, fid = rec["model"], rec["family"]
         kind = rec.get("scalar_kind")
         judge = rec.get("judge") or {}
+        # A judge reply that could not be parsed carries the fallback verdict
+        # (one group, no contradiction); it must not be scored as anything.
+        judge_ok = bool(judge) and judge.get("parse_ok") is not False
+        scored = judge if judge_ok else {}
         cluster = rec.get("cluster") or {}
         scalar = rec.get("scalar") or {}
         per_variant = scalar.get("per_variant", {})
         swing = scalar.get("swing")
-        contingency = judge.get("contingency") or []
-        group_ids = judge.get("group_ids") or []
+        contingency = scored.get("contingency") or []
+        group_ids = scored.get("group_ids") or []
 
         variants = []
         groups_exact = True
@@ -159,6 +183,7 @@ def build_fam(analysis: dict) -> dict:
                     # never reads like 20/20 (hedged answers still count in the
                     # judge grouping).
                     "n_committed": per_variant.get(vlabel, {}).get("n_parsed"),
+                    "se": per_variant.get(vlabel, {}).get("se"),
                     # what actually varied between the columns — the framing can
                     # live in the user prompt or the system prompt.
                     "prompt": q.get("prompt", ""),
@@ -168,7 +193,8 @@ def build_fam(analysis: dict) -> dict:
                 }
             )
 
-        ari = judge.get("ari")
+        ari = scored.get("ari")
+        contradiction = scored.get("contradiction") if judge_ok else None
         records.append(
             {
                 "model": model,
@@ -177,14 +203,22 @@ def build_fam(analysis: dict) -> dict:
                 "variants": variants,
                 "groups_exact": groups_exact,
                 "swing": swing,
+                "swing_p": scalar.get("swing_p"),
                 "judge": {
+                    "parse_ok": judge_ok if judge else None,
                     "ari": ari,
-                    "nmi": judge.get("nmi"),
-                    "n_groups": judge.get("n_groups"),
-                    "group_names": judge.get("group_names") or [],
+                    "nmi": scored.get("nmi"),
+                    "n_groups": scored.get("n_groups"),
+                    "h_groups": scored.get("h_groups"),
+                    "h_variants": scored.get("h_variants"),
+                    "h_cond": scored.get("h_cond"),
+                    "mi": scored.get("mi"),
+                    "mi_p": scored.get("mi_p"),
+                    "verdict": fam_verdict(scored if judge_ok else None),
+                    "group_names": scored.get("group_names") or [],
                     "contingency": contingency,
                     "group_ids": group_ids,
-                    "contradiction": judge.get("contradiction"),
+                    "contradiction": contradiction,
                     "rationale": judge.get("rationale"),
                     "flags": judge.get("flags") or [],
                 },
@@ -192,11 +226,18 @@ def build_fam(analysis: dict) -> dict:
                     "ari": cluster.get("ari"),
                     "n_clusters": cluster.get("n_clusters"),
                 },
+                # None stays None: a missing score is not a score of zero.
                 "metrics": {
-                    "judge_ari": ari if ari is not None else 0.0,
-                    "swing_norm": _swing_norm(kind, swing),
-                    "cluster_ari": cluster.get("ari") if cluster else 0.0,
-                    "contradiction": 1.0 if judge.get("contradiction") else 0.0,
+                    "mi": scored.get("mi"),
+                    "h_cond": scored.get("h_cond"),
+                    "judge_ari": ari,
+                    "swing_norm": _swing_norm(kind, swing, scalar.get("scale")),
+                    "cluster_ari": cluster.get("ari"),
+                    "contradiction": (
+                        None
+                        if contradiction is None
+                        else (1.0 if contradiction else 0.0)
+                    ),
                 },
             }
         )
@@ -210,7 +251,7 @@ def build_fam(analysis: dict) -> dict:
         "cohorts": cohorts,
         "families": families,
         "records": records,
-        "ari_bands": list(FAM_ARI_BANDS),
+        "alpha": FAM_ALPHA,
     }
 
 
@@ -226,39 +267,47 @@ def _noscript_table(fam: dict) -> str:
             r["model"],
         ),
     )
+    num = lambda x: "–" if x is None else f"{x:.2f}"  # noqa: E731
     trs = []
     for r in rows:
         j = r.get("judge") or {}
-        sw = r.get("swing")
-        ari = j.get("ari")
         title = fam["families"].get(r["family"], {}).get("title", r["family"])
-        sw_s = "–" if sw is None else f"{sw:.2f}"
-        ari_s = "–" if ari is None else f"{ari:.2f}"
-        contra_s = "yes" if j.get("contradiction") else "no"
+        contra = j.get("contradiction")
+        contra_s = "–" if contra is None else ("yes" if contra else "no")
         trs.append(
             "<tr>"
             f"<td>{_esc(r['model'])}</td><td>{_esc(title)}</td>"
-            f"<td>{sw_s}</td><td>{ari_s}</td><td>{contra_s}</td>"
+            f"<td>{num(r.get('swing'))} {fmt_p(r.get('swing_p'))}</td>"
+            f"<td>{num(j.get('mi'))} {fmt_p(j.get('mi_p'))}</td>"
+            f"<td>{num(j.get('h_cond'))}</td><td>{contra_s}</td>"
+            f"<td>{_esc(j.get('verdict'))}</td>"
             "</tr>"
         )
     return (
         '<noscript><table border="1" cellpadding="4">'
         "<tr><th>model</th><th>family</th><th>swing</th>"
-        "<th>judge ARI</th><th>contradiction</th></tr>"
+        "<th>directed I(G;V)</th><th>undirected H(G|V)</th>"
+        "<th>contradiction</th><th>read</th></tr>"
         + "".join(trs)
         + "</table></noscript>"
     )
 
 
 _LEGEND = (
-    "<div class='legend'><b>swing</b> = spread of the per-variant committed answer "
-    "across framings (model-free effect size; higher = more framing-sensitive). "
-    "<b>judge ARI</b> / <b>cluster ARI</b> = alignment of the blind pooled-judge "
-    "(resp. embedding-cluster) partition with the framing labels: "
-    "<span class='pill g-green'>~0</span> framing-invariant / coherent, "
-    "<span class='pill g-red'>~1</span> answer split cleanly by framing. The chart "
-    "and cards both report the cross-variant judge (it saw every framing at once), "
-    "not the within-prompt judge.</div>"
+    "<div class='legend'><b>swing</b> = spread of the per-framing committed answer "
+    "(model-free effect size; its p is a permutation test). The blind pooled "
+    "judge's answer spread splits exactly into <b>directed I(G;V)</b>, the part "
+    "the framing explains (0 = the framing tells you nothing about the answer; "
+    "at most ln K for K framings), and <b>undirected H(G|V)</b>, the part it does "
+    "not (the model scatters within a framing too) — both in nats like the "
+    "per-question answer spread. A bundle is <span class='pill g-red'>framing-"
+    f"driven</span> when the permutation p of I(G;V) is below {FAM_ALPHA}, "
+    "<span class='pill g-amber'>undirected</span> when positions vary but not "
+    "with the framing, <span class='pill g-green'>single position</span> when "
+    "the judge found one group, and <span class='pill g-mut'>no verdict</span> "
+    "when its reply could not be parsed (nothing is scored). The chart and cards "
+    "both report the cross-variant judge (it saw every framing at once), not the "
+    "within-prompt judge.</div>"
 )
 _LEGEND_RECOVERED = (
     "<div class='legend' style='margin-top:4px'>Response tints were <b>recovered "
@@ -287,10 +336,17 @@ and the committed-answer % measure different things and can legitimately
 disagree: a column can be 100% "yes" among 2 committed answers while its 20
 full answers sit with the reassuring camp.</li>
 <li><b>swing</b> = spread of the per-framing committed-answer means (the
-Sharma-style sycophancy effect size, judge-free). <b>judge ARI</b> ≈ 0 means
-the judge's grouping ignores the framing (coherent); ≈ 1 means the framing
-determines the answer. The contingency table shows the split directly, with
-each framing's committed answer alongside.</li>
+Sharma-style sycophancy effect size, judge-free), with a permutation p-value:
+would shuffling the same answers across framings produce a swing this big?</li>
+<li><b>directed I(G;V)</b> and <b>undirected H(G|V)</b> add up to the pooled
+judge's answer spread. Directed = the framing predicts the position (the cue
+moved the model); undirected = the model takes different positions <i>within</i>
+a framing, which no cue explains. The permutation p on I(G;V) says whether the
+directed part beats chance. ARI is shown as a secondary score only: it reads
+≈ 0 both for "one position everywhere" and "scatters everywhere", and a cue
+that flips half of one framing's answers scores only ≈ 0.1. The contingency
+table shows the split directly, with each framing's committed answer
+alongside.</li>
 </ul></details>
 """
 
@@ -315,14 +371,16 @@ def build_families_report(analysis: dict, out_path: Path) -> Path:
     <label>family <select id="family"></select></label>
     <label>sort
       <select id="sort">
-        <option value="judge_ari">most framing-split (judge ARI)</option>
-        <option value="swing">biggest swing</option>
+        <option value="mi">most framing-driven (directed I(G;V))</option>
+        <option value="h_cond">most scattered within framings (undirected H(G|V))</option>
+        <option value="swing">biggest swing (normalized)</option>
+        <option value="judge_ari">judge ARI vs framing</option>
         <option value="contradiction">contradictions first</option>
         <option value="model">model</option>
         <option value="family">family</option>
       </select></label>
     <label>search <input type="text" id="search" placeholder="text in responses/rationale"></label>
-    <label><input type="checkbox" id="onlyContra" title="judge contradiction or framing effect (ARI) ≥ 0.2"> framing-driven only</label>
+    <label><input type="checkbox" id="onlyContra" title="judge contradiction, or the permutation p of I(G;V) below 0.05"> framing-driven only</label>
     <button id="expandAll">expand all</button>
     <button id="collapseAll">collapse all</button>
     <button id="reset" title="restore all filters to defaults">reset</button>

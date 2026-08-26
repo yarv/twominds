@@ -81,7 +81,8 @@ Core pipeline:
 - `embed.py` / `cluster.py` — embedding backends and agglomerative
   clustering.
 - `metrics.py` — per-bundle variance metrics feeding `analysis.json`.
-- `families.py` — cross-variant family analysis (swing, blind judge, ARI).
+- `families.py` — cross-variant family analysis (committed-answer swing,
+  blind pooled judge, the directed/undirected entropy decomposition).
 - `analyze.py` — phase 2 orchestration.
 - `store.py` — the per-model cache (see below).
 - `run_meta.py` / `run_registry.py` — run-dir metadata and judge-pass
@@ -97,7 +98,7 @@ Reports:
   SVG builders, grouped-bar primitives, a `stateStore` factory for
   localStorage+hash filter persistence), the HTML document shell, the
   `</script>`-safe JSON-blob helper, the family-question predicate, and
-  `FAM_ARI_BANDS` (framing-effect banding, one source: 0.10/0.40).
+  `FAM_ALPHA` + `fam_verdict` (the framing-dependence verdict, one source).
 - `report.py` / `multi_report.py` / `families_report.py` — the three
   builders. Each embeds data as JSON blobs (`DATA`/`CHART`/`FAM`) rendered
   client-side.
@@ -226,11 +227,24 @@ responses and measures whether the answer splits along the framing axis:
   become an answer. Legacy runs whose prompts said `First line: ...` are
   re-parsed on the first line automatically (`families.answer_line_for`
   reads the stored prompts; a family can also pin `answer_line:`).
-- **judge ARI** — the cross-sample judge run **blind** on the shuffled pool
-  (given only the neutral invariant question), scored by
-  `ARI(judge groups, framing labels)`: ~0 = framing-invariant, ~1 = answer
-  determined by framing. A variant × judge-group contingency shows the split
-  directly.
+- **directed / undirected spread** — the cross-sample judge run **blind** on
+  the shuffled pool (given only the neutral invariant question) partitions
+  the pooled answers into positions. That partition's answer spread
+  decomposes exactly as H(G) = H(G|V) + I(G;V): **I(G;V)**, the part the
+  framing explains (directed — the answer follows the cue; at most ln K for
+  K framings), and **H(G|V)**, the part it does not (undirected — the model
+  scatters within a framing too). Both are in nats, like the per-question
+  answer spread, and a permutation test on I(G;V) (`report_ui.FAM_ALPHA`)
+  gives the verdict: single position / directed / undirected. ARI/NMI
+  against the framing labels are kept as secondary scores — ARI ≈ 0 cannot
+  tell "one position everywhere" from "scatters everywhere", and a cue that
+  flips half of one framing's answers scores only ≈ 0.1. A variant ×
+  judge-group contingency shows the split directly, and
+  `families.alignment_from_contingency` re-scores any stored one, so old
+  runs get the decomposition without re-judging. An unparseable judge reply
+  scores nothing (`parse_ok: false`, "no verdict") instead of reading as a
+  single position, and missing scores stay null in the report rather than
+  entering cohort means as 0.
 
 Family variants are excluded from the main report's chart and cards (each
 variant trivially agrees with itself) and skipped by the per-question judge —

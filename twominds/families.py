@@ -14,9 +14,15 @@ Mechanism, per (model, family):
   2. Run the existing cross-sample judge **blind** on the pooled responses — it is
      given only the neutral invariant question (no hint that framing varied) and
      partitions by consistency, exactly as in the per-prompt path.
-  3. Score ``ARI(judge_partition, framing_labels)``: ~0 = the judge's groups are
-     unrelated to framing (framing-invariant, coherent); ~1 = responses separate
-     cleanly by framing (framing-driven incoherence). A ``contingency`` matrix
+  3. Score the judge partition against the framing labels. The answer spread of
+     the pooled bundle decomposes exactly as ``H(G) = H(G|V) + I(G;V)``: the
+     mutual information ``I(G;V)`` is the part of the spread the framing
+     explains (**directed** — the answer follows the cue) and the conditional
+     entropy ``H(G|V)`` is the part it does not (**undirected** — the model
+     scatters within a framing too). A permutation test on ``I(G;V)`` says
+     whether the framing dependence beats a random relabelling. ARI/NMI are kept
+     as secondary agreement scores (an ARI of ~0 cannot tell "one position
+     everywhere" from "scatters everywhere"), and a ``contingency`` matrix
      (variant x judge group) shows the split directly.
   4. For families with a ``scalar`` (a 1-10 / yes-no / A-B answer the model
      commits on its FINAL line, after reasoning), also compute a model-free
@@ -27,9 +33,12 @@ Mechanism, per (model, family):
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from collections import Counter
 from typing import Optional
+
+import numpy as np
 
 from .cluster import agreement
 from .judge import JudgeResult, run_judge_eval
@@ -183,6 +192,7 @@ def per_variant_scalar(
             nums = [float(x) for x in parsed]
             out[v] = {
                 "mean": (sum(nums) / len(nums)) if nums else None,
+                "se": _standard_error(nums),
                 "n_parsed": len(nums),
                 "n": len(resps),
                 "values": nums,
@@ -190,13 +200,27 @@ def per_variant_scalar(
         else:  # ab
             counts = Counter(parsed)
             tot = sum(counts.values())
+            frac = (counts.get("A", 0) / tot) if tot else None
             out[v] = {
-                "frac_A": (counts.get("A", 0) / tot) if tot else None,
+                "frac_A": frac,
+                "se": (math.sqrt(frac * (1 - frac) / tot) if tot > 1 else None)
+                if frac is not None
+                else None,
                 "n_parsed": tot,
                 "n": len(resps),
                 "counts": dict(counts),
             }
     return out
+
+
+def _standard_error(values: list[float]) -> Optional[float]:
+    """Standard error of the mean (sample SD / sqrt n); None below n=2."""
+    n = len(values)
+    if n < 2:
+        return None
+    m = sum(values) / n
+    var = sum((x - m) ** 2 for x in values) / (n - 1)
+    return math.sqrt(var / n)
 
 
 def scalar_swing(kind: str, per_variant: dict[str, dict]) -> Optional[float]:
@@ -206,6 +230,51 @@ def scalar_swing(kind: str, per_variant: dict[str, dict]) -> Optional[float]:
     if len(vals) < 2:
         return None
     return float(max(vals) - min(vals))
+
+
+def _variant_values(kind: str, pv: dict) -> list[float]:
+    if kind == "ab":
+        counts = pv.get("counts") or {}
+        return [1.0] * int(counts.get("A", 0)) + [0.0] * int(counts.get("B", 0))
+    return [float(x) for x in (pv.get("values") or [])]
+
+
+def scalar_swing_p(
+    kind: str,
+    per_variant: dict[str, dict],
+    *,
+    n_perm: int = 2000,
+    seed: int = 0,
+) -> Optional[float]:
+    """Permutation p-value for the swing: does the framing move the committed
+    answer more than a random re-assignment of the same answers to framings
+    would? Pools every committed value, shuffles which framing it came from
+    (keeping each framing's committed count), and counts shuffles whose
+    max-minus-min of per-framing means reaches the observed swing:
+    ``(hits + 1) / (n_perm + 1)``. None when fewer than two framings committed.
+    """
+    groups = [
+        np.asarray(_variant_values(kind, pv), dtype=float)
+        for pv in per_variant.values()
+    ]
+    groups = [g for g in groups if len(g)]
+    if len(groups) < 2:
+        return None
+    pooled = np.concatenate(groups)
+    sizes = [len(g) for g in groups]
+    observed = max(float(g.mean()) for g in groups) - min(
+        float(g.mean()) for g in groups
+    )
+    rng = np.random.default_rng(seed)
+    perms = rng.permuted(np.broadcast_to(pooled, (n_perm, len(pooled))).copy(), axis=1)
+    means, start = [], 0
+    for size in sizes:
+        means.append(perms[:, start : start + size].mean(axis=1))
+        start += size
+    means = np.stack(means, axis=1)
+    swings = means.max(axis=1) - means.min(axis=1)
+    hits = int((swings >= observed - 1e-12).sum())
+    return (hits + 1) / (n_perm + 1)
 
 
 # --- pooling + alignment -----------------------------------------------------
@@ -278,19 +347,132 @@ def contingency(
     return mat, groups
 
 
+# --- entropy decomposition of the pooled bundle -----------------------------
+# H(G) = H(G|V) + I(G;V): the pooled answer spread splits into the part the
+# framing explains (directed) and the part it does not (undirected), in the
+# same units (nats) as the per-question answer spread. ARI cannot make this
+# distinction: it is ~0 both for "one position everywhere" and for "scatters
+# everywhere regardless of framing", and a cue that flips half of one framing's
+# answers scores only ~0.1.
+
+DEFAULT_N_PERM = 2000
+
+
+def _entropy(counts) -> float:
+    counts = np.asarray(counts, dtype=float).ravel()
+    tot = counts.sum()
+    if tot <= 0:
+        return 0.0
+    p = counts[counts > 0] / tot
+    return float(-(p * np.log(p)).sum())
+
+
+def _row_entropies(counts: np.ndarray) -> np.ndarray:
+    """Entropy of each row of a (P, K) count matrix."""
+    tot = counts.sum(axis=1, keepdims=True)
+    p = counts / np.maximum(tot, 1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        terms = np.where(counts > 0, p * np.log(p), 0.0)
+    return -terms.sum(axis=1)
+
+
+def _index_labels(labels) -> tuple[np.ndarray, int]:
+    ids = {x: i for i, x in enumerate(sorted(set(labels)))}
+    return np.asarray([ids[x] for x in labels], dtype=int), len(ids)
+
+
+def entropy_decomposition(judge_labels, variant_labels) -> dict:
+    """``{h_groups, h_variants, h_cond, mi}`` (nats) for one pooled bundle:
+    ``h_groups`` = H(G) the pooled answer spread, ``h_cond`` = H(G|V) its
+    undirected part, ``mi`` = I(G;V) its directed part, ``h_variants`` = H(V)
+    the ceiling of ``mi`` (ln K for K equally sampled framings)."""
+    if len(judge_labels) != len(variant_labels):
+        raise ValueError("label vectors must be the same length")
+    if not len(judge_labels):
+        return {"h_groups": 0.0, "h_variants": 0.0, "h_cond": 0.0, "mi": 0.0}
+    g, ng = _index_labels(judge_labels)
+    v, nv = _index_labels(variant_labels)
+    joint = np.bincount(v * ng + g, minlength=nv * ng).reshape(nv, ng)
+    h_g, h_v = _entropy(joint.sum(axis=0)), _entropy(joint.sum(axis=1))
+    mi = max(0.0, h_g + h_v - _entropy(joint))
+    return {"h_groups": h_g, "h_variants": h_v, "h_cond": max(0.0, h_g - mi), "mi": mi}
+
+
+def mi_permutation_p(
+    judge_labels,
+    variant_labels,
+    *,
+    n_perm: int = DEFAULT_N_PERM,
+    seed: int = 0,
+) -> Optional[float]:
+    """Monte-Carlo p-value for I(G;V) > 0: keep the judge partition, shuffle
+    which framing each response came from, and count shuffles at least as
+    framing-dependent as observed: ``(hits + 1) / (n_perm + 1)``. None when the
+    test is moot (one group, or one framing)."""
+    if len(judge_labels) != len(variant_labels):
+        raise ValueError("label vectors must be the same length")
+    g, ng = _index_labels(judge_labels)
+    v, nv = _index_labels(variant_labels)
+    if ng < 2 or nv < 2:
+        return None
+    n = len(g)
+    joint = np.bincount(v * ng + g, minlength=nv * ng)
+    h_marg = _entropy(joint.reshape(nv, ng).sum(axis=0)) + _entropy(
+        joint.reshape(nv, ng).sum(axis=1)
+    )
+    observed = h_marg - _entropy(joint)
+    rng = np.random.default_rng(seed)
+    perms = rng.permuted(np.broadcast_to(g, (n_perm, n)).copy(), axis=1)
+    idx = v[None, :] * ng + perms
+    counts = np.zeros((n_perm, nv * ng), dtype=float)
+    np.add.at(counts, (np.repeat(np.arange(n_perm), n), idx.ravel()), 1.0)
+    mi_perm = h_marg - _row_entropies(counts)  # the marginals never change
+    hits = int((mi_perm >= observed - 1e-12).sum())
+    return (hits + 1) / (n_perm + 1)
+
+
 def family_alignment(
-    judge_labels: list[int], variant_labels: list[int], n_variants: int
+    judge_labels: list[int],
+    variant_labels: list[int],
+    n_variants: int,
+    *,
+    n_perm: int = DEFAULT_N_PERM,
+    seed: int = 0,
 ) -> dict:
-    """ARI/NMI of a partition vs the framing labels, plus the contingency split."""
+    """Score one pooled bundle's judge partition against the framing labels.
+
+    Returns the entropy decomposition (``h_groups``, ``h_variants``,
+    ``h_cond``, ``mi``) with the permutation p-value ``mi_p`` of the directed
+    part, the secondary ARI/NMI agreement scores, and the variant x judge-group
+    ``contingency`` with its ``group_ids`` (column order).
+    """
     agr = agreement(judge_labels, variant_labels)
     mat, groups = contingency(variant_labels, judge_labels, n_variants)
+    dec = entropy_decomposition(judge_labels, variant_labels)
     return {
         "ari": agr["ari"],
         "nmi": agr["nmi"],
         "n_groups": len(groups),
         "contingency": mat,
         "group_ids": groups,
+        **dec,
+        "mi_p": mi_permutation_p(
+            judge_labels, variant_labels, n_perm=n_perm, seed=seed
+        ),
     }
+
+
+def alignment_from_contingency(mat: list[list[int]], **kwargs) -> dict:
+    """:func:`family_alignment` recomputed from a stored variant x group count
+    matrix (``families[].judge.contingency`` in any analysis.json), so old runs
+    can be re-scored without re-judging: the counts determine every metric."""
+    judge_labels: list[int] = []
+    variant_labels: list[int] = []
+    for vi, row in enumerate(mat):
+        for gi, c in enumerate(row):
+            judge_labels.extend([gi] * int(c or 0))
+            variant_labels.extend([vi] * int(c or 0))
+    return family_alignment(judge_labels, variant_labels, len(mat), **kwargs)
 
 
 # --- blind pooled judge orchestration ---------------------------------------
