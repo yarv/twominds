@@ -116,7 +116,12 @@ class OpenAIEmbedder:
         out = []
         for t in texts:
             if enc is not None:
-                toks = enc.encode(t)
+                # Model output is data, never control text: a response that
+                # spells out "<|fim_suffix|>" or "<|endoftext|>" must embed
+                # like any other string instead of raising (tiktoken rejects
+                # special-token strings by default; this crashed the
+                # 2026-08-26 families_v2 assembly after all 40 generations).
+                toks = enc.encode(t, disallowed_special=())
                 if len(toks) > cls._MAX_INPUT_TOKENS:
                     t = enc.decode(toks[: cls._MAX_INPUT_TOKENS])
             elif len(t.encode("utf-8")) > cls._MAX_INPUT_TOKENS:
