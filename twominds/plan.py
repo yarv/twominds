@@ -51,6 +51,12 @@ _PRICES: dict[str, tuple[float, float]] = {
     "grok-4.5": (2.0, 6.0),
     # Open-weight models via OpenRouter.
     "llama-3.3-70b": (0.1, 0.32),
+    # Llama 3.x size ladder, passed as bare OpenRouter slugs (spec name = slug
+    # tail). OpenRouter list prices 2026-08-28.
+    "llama-3.2-1b-instruct": (0.027, 0.20),
+    "llama-3.2-3b-instruct": (0.05, 0.33),
+    "llama-3.1-8b-instruct": (0.05, 0.08),
+    "llama-3.1-70b-instruct": (0.40, 0.40),
     "llama-4-maverick": (0.2, 0.8),
     "llama-4-scout": (0.1, 0.3),
     "deepseek-v4-flash": (0.14, 0.28),
@@ -62,6 +68,8 @@ _PRICES: dict[str, tuple[float, float]] = {
     "qwen3.5-9b-thinking": (0.10, 0.15),
     "qwen3.5-27b": (0.20, 1.56),
     "qwen3.5-27b-thinking": (0.20, 1.56),
+    "qwen3.5-35b-a3b": (0.25, 1.25),
+    "qwen3.5-35b-a3b-thinking": (0.25, 1.25),
     "qwen3.5-122b-a10b": (0.26, 2.08),
     "qwen3.5-122b-a10b-thinking": (0.26, 2.08),
     "qwen3.5-397b-a17b": (0.39, 2.34),

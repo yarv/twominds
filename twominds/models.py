@@ -215,6 +215,19 @@ _ROSTER_REFS: dict[str, tuple[str, Optional[str], str]] = {
         "low",
         "Qwen3.5 27B (thinking)",
     ),
+    # 35B-A3B MoE rung. families_v2 (2026-08-26) ran it as a bare slug with no
+    # effort pin and it thought by default (~1.5M reasoning tokens); pinned
+    # here like its siblings so the tier-1 ladder runs it with thinking off.
+    "qwen3.5-35b-a3b": (
+        "openrouter/qwen/qwen3.5-35b-a3b",
+        "none",
+        "Qwen3.5 35B-A3B (no thinking)",
+    ),
+    "qwen3.5-35b-a3b-thinking": (
+        "openrouter/qwen/qwen3.5-35b-a3b",
+        "low",
+        "Qwen3.5 35B-A3B (thinking)",
+    ),
     "qwen3.5-122b-a10b": (
         "openrouter/qwen/qwen3.5-122b-a10b",
         "none",
@@ -299,6 +312,8 @@ _ALIASES = {
     "qwen3.7-plus-low": "qwen3.7-plus-thinking",
     # Qwen3.5 size ladder: the -a10b / -a17b active-parameter suffixes are
     # part of the OpenRouter slugs; these drop them for typing convenience.
+    "qwen3.5-35b": "qwen3.5-35b-a3b",
+    "qwen3.5-35b-thinking": "qwen3.5-35b-a3b-thinking",
     "qwen3.5-122b": "qwen3.5-122b-a10b",
     "qwen3.5-122b-thinking": "qwen3.5-122b-a10b-thinking",
     "qwen3.5-397b": "qwen3.5-397b-a17b",
