@@ -103,9 +103,7 @@ def _detail_block(r: dict, question: dict, *, n_sample_responses, max_response_c
         or "      (none)"
     )
     sampled = (r.get("responses") or [])[:n_sample_responses]
-    resp_txt = "\n".join(
-        f"      - {_truncate(s, max_response_chars)}" for s in sampled
-    )
+    resp_txt = "\n".join(f"      - {_truncate(s, max_response_chars)}" for s in sampled)
     return (
         f"  Question [{r.get('group', '?')}] {r.get('question_id', '?')}: "
         f'"{_truncate(question.get("prompt") or "", 200)}"\n'
@@ -140,7 +138,9 @@ def _families_digest(families: list[dict]) -> str:
         scalar = f.get("scalar") or {}
         parts = []
         if scalar.get("swing") is not None:
-            parts.append(f"answer swing across framings={scalar['swing']:.2f} ({scalar.get('kind')})")
+            parts.append(
+                f"answer swing across framings={scalar['swing']:.2f} ({scalar.get('kind')})"
+            )
         if fj.get("ari") is not None:
             parts.append(f"variant-vs-position agreement ARI={fj['ari']:.2f}")
         if fj.get("contradiction"):
@@ -168,9 +168,7 @@ def build_model_prompt(
     a judge verdict. families: this model's ``analysis["families"]`` entries.
     """
     questions = questions or {}
-    n_answers = (
-        (records[0].get("metrics") or {}).get("n", "N") if records else "N"
-    )
+    n_answers = (records[0].get("metrics") or {}).get("n", "N") if records else "N"
     ranked = sorted(records, key=_interest_key, reverse=True)
     detailed, rest = ranked[:max_detailed], ranked[max_detailed:]
     detail_txt = "\n\n".join(
@@ -234,9 +232,7 @@ async def summarize_models(
     from dotenv import load_dotenv
 
     load_dotenv()
-    model = get_judge_model(
-        judge_name, reasoning_effort, max_connections=concurrency
-    )
+    model = get_judge_model(judge_name, reasoning_effort, max_connections=concurrency)
     sem = asyncio.Semaphore(concurrency)
     out: dict[str, dict] = {}
 

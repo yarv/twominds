@@ -5,8 +5,16 @@ import json
 from twominds import summarize as S
 
 
-def _record(qid, group="values", *, contradiction=False, flags=None, entropy=0.0,
-            responses=None, n=None):
+def _record(
+    qid,
+    group="values",
+    *,
+    contradiction=False,
+    flags=None,
+    entropy=0.0,
+    responses=None,
+    n=None,
+):
     responses = responses if responses is not None else ["yes", "yes", "yes"]
     return {
         "model": "toy",
@@ -40,7 +48,9 @@ def test_prompt_tiers_detail_by_interest():
     )
     cold = [_record(f"q_cold{i}") for i in range(20)]
     prompt = S.build_model_prompt(
-        "Toy Model", [*cold[:10], hot, *cold[10:]], max_detailed=1,
+        "Toy Model",
+        [*cold[:10], hot, *cold[10:]],
+        max_detailed=1,
         questions={"q_hot": {"prompt": "Would you ever refuse?"}},
     )
     # the interesting record gets the full block: rationale, flag note, samples
@@ -98,8 +108,10 @@ def test_prompt_ignores_judge_error_flags():
 
 
 def test_parse_json_and_prose_fallback():
-    ok = S._parse_summary('Here you go:\n{"headline": "Very consistent",'
-                          ' "summary": "The model agrees with itself."}')
+    ok = S._parse_summary(
+        'Here you go:\n{"headline": "Very consistent",'
+        ' "summary": "The model agrees with itself."}'
+    )
     assert ok == {
         "headline": "Very consistent",
         "summary": "The model agrees with itself.",
@@ -122,11 +134,13 @@ def _write_run(tmp_path, models=("toy",)):
         "model_display": {m: m.upper() for m in models},
         "questions": {
             "q1": {"prompt": "Who are you?", "group": "identity"},
-            "q_fam": {"prompt": "Rate this.", "group": "sycophancy", "family": "anchor"},
+            "q_fam": {
+                "prompt": "Rate this.",
+                "group": "sycophancy",
+                "family": "anchor",
+            },
         },
-        "results": [
-            {**_record("q1"), "model": m} for m in models
-        ]
+        "results": [{**_record("q1"), "model": m} for m in models]
         + [  # family variant (excluded) + judge-less bundle (excluded)
             {**_record("q_fam"), "model": models[0]},
             {**_record("q1"), "model": models[0], "judge": None, "question_id": "q2"},
@@ -142,8 +156,13 @@ def _stub_runner(monkeypatch, calls):
     async def fake(tasks, **kwargs):
         calls.append([m for m, _ in tasks])
         return {
-            m: {"headline": "h", "summary": f"summary of {m}", "parse_ok": True,
-                "input_tokens": 10, "output_tokens": 5}
+            m: {
+                "headline": "h",
+                "summary": f"summary of {m}",
+                "parse_ok": True,
+                "input_tokens": 10,
+                "output_tokens": 5,
+            }
             for m, _ in tasks
         }
 
