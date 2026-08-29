@@ -67,8 +67,8 @@ CLI (`cli/`) — one module per command group, assembled in `__init__.py`
   generates).
 - `_reps.py` — repeat-judge-pass machinery.
 - `run_cmd.py` (`run`, `generate`), `analyze_cmd.py` (`analyze`),
-  `report_cmd.py` (`report`, `consistency`, `merge`), `budget_cmd.py`,
-  `stress_cmd.py`.
+  `report_cmd.py` (`report`, `consistency`, `merge`),
+  `summarize_cmd.py` (`summarize`), `budget_cmd.py`, `stress_cmd.py`.
 
 Core pipeline:
 
@@ -88,6 +88,9 @@ Core pipeline:
   discovery.
 - `consistency.py` / `merge.py` — cross-judge-run aggregation; multi-run
   merging.
+- `summarize.py` — opt-in (beta) per-model LLM summaries for the Qualitative tab
+  (tiered prompt over the judge verdicts; `summaries.json` sidecar keyed by
+  summarizer + prompt hash, so it works retroactively on any run dir).
 - `plan.py` / `cost.py` — `--dry-run` planning and cost roll-ups.
 
 Reports:

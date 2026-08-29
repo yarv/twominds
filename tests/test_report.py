@@ -501,3 +501,51 @@ def test_report_renders_judge_only(tmp_path):
     assert "none (judge-only)" in html  # header says embeddings are off
     assert "const EMB = (DATA.backends || []).length > 0;" in html
     assert not _external_urls(html)
+
+
+# --------------------------------------------------------------------------- #
+# per-model LLM summaries (optional summaries.json sidecar)
+# --------------------------------------------------------------------------- #
+
+
+def _summaries():
+    return {
+        "gpt-4.1": {
+            "headline": "Rock-solid <b>consistency</b>",
+            "summary": "Answered every question the same way; one refusal flag.",
+            "parse_ok": True,
+            "summarizer": "openrouter/anthropic/claude-opus-4.8",
+        }
+    }
+
+
+def test_report_renders_summaries_in_qualitative_tab(tmp_path):
+    analysis = _synthetic_analysis()
+    analysis["summaries"] = _summaries()
+    html = R.build_report(analysis, tmp_path / "report.html").read_text()
+    # dedicated tab: nav button + section + client-side card container
+    assert 'data-tab="qualitative"' in html
+    assert 'id="tab-qualitative"' in html and 'id="qualCards"' in html
+    assert "sumCard" in html
+    # summary text reaches the data blob (JSON-escaped, rendered via esc()),
+    # and the note names the summarizer
+    assert "one refusal flag" in html
+    assert "claude-opus-4.8" in html
+    assert not _external_urls(html)
+
+
+def test_report_without_summaries_has_no_qualitative_tab(tmp_path):
+    html = R.build_report(_synthetic_analysis(), tmp_path / "report.html").read_text()
+    assert 'data-tab="qualitative"' not in html
+    assert 'id="tab-qualitative"' not in html
+
+
+def test_report_from_run_picks_up_sidecar(tmp_path):
+    import json as _json
+
+    (tmp_path / "analysis.json").write_text(_json.dumps(_synthetic_analysis()))
+    (tmp_path / "summaries.json").write_text(_json.dumps(_summaries()))
+    out = R.build_report_from_run(tmp_path)
+    assert "one refusal flag" in out.read_text()
+    # the sidecar is injected in memory only — analysis.json stays unmodified
+    assert "summaries" not in _json.loads((tmp_path / "analysis.json").read_text())

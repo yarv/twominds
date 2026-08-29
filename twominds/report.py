@@ -99,6 +99,15 @@ section.tab.active { display:block; }
 .takeaways li { margin:3px 0; }
 .takeaways .num { color:var(--accent); }
 
+/* per-model LLM summaries (opt-in; `twominds summarize`) */
+.sumcards { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:10px; margin-top:8px; }
+.sumcard { background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:10px 14px; font-size:12.5px; }
+.sumcard h3 { margin:0 0 4px; font-size:13px; }
+.sumcard .headline { color:var(--accent); font-weight:600; }
+.sumcard .body { color:var(--muted); line-height:1.5; margin-top:2px; }
+
 /* summary / setup tables */
 table.tbl { border-collapse:collapse; font-size:12.5px; width:100%; }
 .tbl th { text-align:left; color:var(--muted); font-weight:500; font-size:11.5px;
@@ -416,6 +425,24 @@ function aggTable(firstCol, rows, extended){
   return h + '</table>';
 }
 
+// ---------- per-model LLM summaries (optional sidecar; see twominds/summarize.py) ----------
+const SUMMARIES = DATA.summaries || {};
+function sumCard(m, withName){
+  const s = SUMMARIES[m];
+  if (!s || !s.summary) return '';
+  return '<div class="sumcard">'
+    + (withName ? '<h3>'+esc(m)+'</h3>' : '')
+    + (s.headline ? '<div class="headline">'+esc(s.headline)+'</div>' : '')
+    + '<div class="body">'+esc(s.summary)
+    + (s.parse_ok===false ? ' <span class="hint">(raw summarizer output — could not be parsed)</span>' : '')
+    + '</div></div>';
+}
+// Fills the Qualitative tab (present only when the run has summaries).
+function renderQualitative(){
+  const el = document.getElementById('qualCards');
+  if (el) el.innerHTML = DATA.models.map(m=>sumCard(m, true)).join('');
+}
+
 // ---------- overview ----------
 function renderOverview(){
   const a = aggRows(COHERENT_ROWS);
@@ -497,6 +524,8 @@ function renderModelDetail(){
   let h = '<div class="kv" style="margin-bottom:10px"><div><span class="k">model</span><b>'+esc(m)+'</b></div>'
     + (displayName(m)!==m ? '<div><span class="k">full id / source</span>'+esc(displayName(m))+'</div>' : '')
     + '</div>';
+  const sc = sumCard(m, false);
+  if (sc) h += '<div style="margin-bottom:10px">'+sc+'</div>';
   h += '<h2>By question category <span class="hint">— hover a column header for what it measures</span></h2>';
   const tableRows = groups.map(g=>({
     agg: aggRows(rows.filter(r=>r.group===g)),
@@ -748,6 +777,7 @@ function init(){
   DATA.results.forEach(r=>{ const j=r.judge||{}; if (j.contradiction) openCards.add(cardKey(r)); });
   renderTabs();
   renderOverview();
+  renderQualitative();
   renderModelDetail();
   renderSetup();
   render();
@@ -775,6 +805,37 @@ def _write_sibling_png(analysis: dict, out_path: Path) -> None:
         )
     except Exception:
         pass
+
+
+def _qualitative_tab_html(analysis: dict) -> tuple[str, str]:
+    """(nav button, tab section) for the per-model LLM summaries.
+
+    Present only when the run has summaries (`twominds summarize`); the cards
+    themselves are rendered client-side from ``DATA.summaries`` into
+    ``#qualCards``. ("", "") otherwise, so summary-less reports are unchanged.
+    """
+    import html as html_mod
+
+    summaries = analysis.get("summaries") or {}
+    if not any((v or {}).get("summary") for v in summaries.values()):
+        return "", ""
+    summarizer = next(
+        (v.get("summarizer") for v in summaries.values() if v.get("summarizer")),
+        None,
+    )
+    button = '<button data-tab="qualitative">Qualitative</button>'
+    section = f"""
+<section class="tab" id="tab-qualitative">
+  <div class="pane">
+    <h2>What stands out per model</h2>
+    <p class="note">Each card was written by
+    <b>{html_mod.escape(summarizer or "an LLM")}</b> from that model's judge
+    verdicts, flags, and sample answers — a qualitative read, not a metric.
+    Verify anything surprising against the Answers tab.</p>
+    <div class="sumcards" id="qualCards"></div>
+  </div>
+</section>"""
+    return button, section
 
 
 def _families_tab_html(analysis: dict) -> tuple[str, str]:
@@ -849,12 +910,13 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     chart_data = json_blob(category_chart.build_chart_data(analysis))
     chart_section = category_chart.chart_section_html("cchart")
     fam_button, fam_section = _families_tab_html(analysis)
+    qual_button, qual_section = _qualitative_tab_html(analysis)
     body = f"""<header>
   <h1>How consistently do these models answer?</h1>
   <div class="dash" style="margin-top:2px">{n_models} models · {n_questions} questions{per_q} ·
     judge: {judge} · embeddings: {backends}</div>
   <nav class="tabs">
-    <button data-tab="overview">Overview</button>
+    <button data-tab="overview">Overview</button>{qual_button}
     <button data-tab="models">Models</button>
     <button data-tab="explorer">Answers</button>{fam_button}
     <button data-tab="setup">Method &amp; setup</button>
@@ -873,6 +935,7 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     <div id="modelTable"></div>
   </div>
 </section>
+{qual_section}
 
 <section class="tab" id="tab-models">
   <div class="pane">
@@ -943,5 +1006,10 @@ def build_report(analysis: dict, out_path: Path) -> Path:
 def build_report_from_run(run_dir: Path, out_path: Path | None = None) -> Path:
     run_dir = Path(run_dir)
     analysis = json.loads((run_dir / "analysis.json").read_text())
+    # Optional per-model LLM summaries sidecar (`twominds summarize`); injected
+    # in memory only — analysis.json itself is never modified.
+    summaries_path = run_dir / "summaries.json"
+    if summaries_path.exists():
+        analysis["summaries"] = json.loads(summaries_path.read_text())
     out_path = Path(out_path) if out_path else (run_dir / "report.html")
     return build_report(analysis, out_path)
