@@ -113,7 +113,7 @@ OpenRouter entirely.
 | `generate` | phase 1 only: sample each model N times over the roster |
 | `analyze` | phase 2 only: cross-sample judge + embedding clustering |
 | `report` | phase 3 only: build the self-contained HTML viewer |
-| `summarize` | add per-model LLM "what stands out" blurbs to a run's report |
+| `summarize` | *(beta)* add per-model LLM "what stands out" blurbs to a run's report |
 | `consistency` | aggregate judge-stability stats across repeat judge runs |
 | `merge` | combine several runs over the same question bank into one report |
 | `stress` | score the judge against synthetic ground-truth bundles |
@@ -136,10 +136,12 @@ uv run twominds analyze  -r results/twominds/run1
 uv run twominds report   -r results/twominds/run1
 ```
 
-Optionally, an LLM can read each model's judge verdicts and write a short
-"what stands out" paragraph shown at the top of the report's Overview tab —
+**Beta:** optionally, an LLM can read each model's judge verdicts and write
+a short "what stands out" paragraph, shown in a Qualitative tab of the report —
 one judge-model call per model, cached in `summaries.json` so re-running is
-free. Opt in with `run --summaries`, or add summaries to any existing run
+free. The summaries are still rough (treat them as a starting point, and verify
+anything surprising against the Answers tab), so this is never run by default:
+opt in with `run --summaries`, or add summaries to any existing run
 retroactively:
 
 ```bash

@@ -1,8 +1,8 @@
-"""Per-model LLM summaries of a run's judge results (opt-in, cached).
+"""Per-model LLM summaries of a run's judge results (beta; opt-in, cached).
 
 One extra judge-model call per model reads that model's judge verdicts, flags,
 and a few sample answers, and writes a short "what stands out" blurb
-(``{headline, summary}``) shown at the top of the report's Overview tab. Runs
+(``{headline, summary}``) shown in the report's Qualitative tab. Beta: never run by default. Runs
 via ``twominds summarize --run <dir>`` (works retroactively on any run dir with
 an ``analysis.json``) or ``twominds run --summaries``.
 

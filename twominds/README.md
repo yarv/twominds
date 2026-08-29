@@ -88,7 +88,7 @@ Core pipeline:
   discovery.
 - `consistency.py` / `merge.py` — cross-judge-run aggregation; multi-run
   merging.
-- `summarize.py` — opt-in per-model LLM summaries for the Overview tab
+- `summarize.py` — opt-in (beta) per-model LLM summaries for the Qualitative tab
   (tiered prompt over the judge verdicts; `summaries.json` sidecar keyed by
   summarizer + prompt hash, so it works retroactively on any run dir).
 - `plan.py` / `cost.py` — `--dry-run` planning and cost roll-ups.

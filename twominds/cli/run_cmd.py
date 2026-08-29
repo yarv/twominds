@@ -150,8 +150,8 @@ def run(
     summaries: bool = typer.Option(
         False,
         "--summaries",
-        help="add per-model LLM summaries to the report (one extra judge-model "
-        "call per model; cached in summaries.json)",
+        help="(beta) add per-model LLM summaries to the report (one extra "
+        "judge-model call per model; cached in summaries.json). Off by default.",
     ),
     rerun: bool = RerunOpt,
     rerun_model: Optional[List[str]] = RerunModelOpt,
