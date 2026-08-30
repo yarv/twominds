@@ -174,6 +174,20 @@ def test_open_weight_thinking_rungs():
     assert M.resolve_model("kimi-k3").reasoning_effort is None
 
 
+def test_qwen35_size_ladder_pins_no_thinking():
+    # OpenRouter's default for these hybrid models is thinking ON, which the
+    # 2026-08-26 families pilot showed blows the 120s attempt timeout on the 9B
+    # rung; the plain rungs must pin "none", the -thinking rungs "low", and the
+    # short names must equal the slug tails (so bare-string labels line up).
+    for rung in ("qwen3.5-9b", "qwen3.5-27b", "qwen3.5-122b-a10b", "qwen3.5-397b-a17b"):
+        plain, think = M.resolve_model(rung), M.resolve_model(f"{rung}-thinking")
+        assert plain.reasoning_effort == "none" and think.reasoning_effort == "low"
+        assert plain.inspect_model == think.inspect_model == f"openrouter/qwen/{rung}"
+        assert plain.name == rung == M._short_name(plain.inspect_model)
+    assert M.resolve_model("qwen3.5-122b").name == "qwen3.5-122b-a10b"
+    assert M.resolve_model("qwen3.5-397b-thinking").name == "qwen3.5-397b-a17b-thinking"
+
+
 def test_missing_ours_key_raises(tmp_path, monkeypatch):
     path = tmp_path / "model_jsons.keys"
     path.write_text("{}")

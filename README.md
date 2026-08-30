@@ -87,6 +87,7 @@ forms above. Defaults: `gpt-4.1`, `gpt-5.2`, `gpt-5.2-thinking`.
 | Google | `gemini-3.1-pro`, `gemini-3.6-flash` | `OPENROUTER_API_KEY` |
 | xAI | `grok-4.5` | `OPENROUTER_API_KEY` |
 | open-weight | `llama-4-maverick`, `llama-4-scout`, `llama-3.3-70b`, `deepseek-v4-flash`, `qwen3.7-plus`, `kimi-k3`, `glm-5.2`, `mistral-large-2512` | `OPENROUTER_API_KEY` |
+| open-weight size ladder | `qwen3.5-9b`, `qwen3.5-27b`, `qwen3.5-122b-a10b` (`qwen3.5-122b`), `qwen3.5-397b-a17b` (`qwen3.5-397b`) — one family at four sizes, thinking off; `-thinking` rungs at low effort | `OPENROUTER_API_KEY` |
 
 Reasoning-capable models come in pairs: the plain name runs *without*
 thinking, the `-thinking` suffix runs at low reasoning effort (run those with
@@ -122,7 +123,7 @@ OpenRouter entirely.
 # a ~$0.30 smoke run, end to end
 uv run twominds run --groups values --models gpt-4.1 --n 3
 
-# the full default sweep: 3 default models × 214 questions × N=20, ~$62 (est.)
+# the full default sweep: 3 default models × 250 questions × N=20, ~$72 (est.)
 uv run twominds run --n 20
 ```
 
@@ -139,7 +140,7 @@ uv run twominds report   -r results/twominds/run1
 
 Questions live in three **buckets**: `tier_1` (175 in-house coherence probes
 across six groups: values, introspection, situational_awareness, ai_safety,
-high_stakes, sycophancy) and `prompt_robustness` (39 questions forming the
+high_stakes, sycophancy) and `prompt_robustness` (75 questions forming the
 cross-variant framing families) are in the default sweep; `tier_2` (17
 answer-first / alternate-framing variants of tier_1 probes) is opt-in.
 
@@ -159,8 +160,10 @@ with the judge's position groups, flags, and embedding clusters. A static PNG
 of the chart is written alongside for papers.
 
 Runs with framing families also get **`families_report.html`** (one card per
-family: per-variant swing, the blind judge's variant × group contingency,
-`k/n committed` counts); repeat-judge runs add **`consistency_report.html`**
+model × family: the blind judge's variant × position contingency with its
+answer spread split into a
+directed part the framing explains and an undirected part it does not, and a
+permutation-test verdict); repeat-judge runs add **`consistency_report.html`**
 and **`multi_report.html`** (judge-pass viewer with ±1 SD error bars).
 
 ## Speed & cost

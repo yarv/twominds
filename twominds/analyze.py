@@ -296,15 +296,52 @@ def _family_pass(
         }
 
         if kind:
-            per_variant = families_mod.per_variant_scalar(kind, p["v2resp"])
+            # Parse the line the prompts asked for: the final line for every
+            # shipped family, the first line for legacy "First line:" rosters
+            # (inferred from the stored prompts unless the family pins it).
+            answer_line = families_mod.answer_line_for(
+                meta,
+                (qmeta.get(qid, {}).get("prompt", "") for qid in p["v2qid"].values()),
+            )
+            scale = meta.get("scale")
+            per_variant = families_mod.per_variant_scalar(
+                kind,
+                p["v2resp"],
+                answer_line=answer_line,
+                scale=tuple(scale) if scale else None,
+            )
             rec["scalar"] = {
                 "kind": kind,
+                "answer_line": answer_line,
+                "scale": list(scale) if scale else None,
                 "per_variant": per_variant,
                 "swing": families_mod.scalar_swing(kind, per_variant),
+                "swing_p": families_mod.scalar_swing_p(kind, per_variant),
             }
 
         jr = fam_judge.get((model_name, fam))
-        if jr is not None:
+        if jr is not None and not jr.parse_ok:
+            # The judge's fallback verdict (one group, no contradiction) is not
+            # a measurement: scoring it would read as "single position across
+            # framings". Keep the record, mark it, score nothing.
+            rec["judge"] = {
+                "parse_ok": False,
+                "ari": None,
+                "nmi": None,
+                "n_groups": None,
+                "contingency": [],
+                "group_ids": [],
+                "h_groups": None,
+                "h_variants": None,
+                "h_cond": None,
+                "mi": None,
+                "mi_p": None,
+                "group_names": [],
+                "contradiction": None,
+                "rationale": jr.rationale,
+                "flags": jr.flags,
+            }
+        elif jr is not None:
             jl = jr.labels(n_total)
             align = families_mod.family_alignment(jl, var_labels, len(order))
             # Persist the exact per-response judge groups, mapped back from

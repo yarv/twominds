@@ -398,7 +398,25 @@ def _analysis_with_family():
             "model": m,
             "family": "poem_rating",
             "title": "Poem rating",
-            "judge": {"ari": 0.8 if m == "toy-finetune" else 0.1},
+            "judge": (
+                {
+                    "ari": 0.8,
+                    "mi": 0.69,
+                    "h_cond": 0.0,
+                    "mi_p": 0.001,
+                    "n_groups": 2,
+                    "parse_ok": True,
+                }
+                if m == "toy-finetune"
+                else {
+                    "ari": 0.1,
+                    "mi": 0.02,
+                    "h_cond": 0.31,
+                    "mi_p": 0.6,
+                    "n_groups": 2,
+                    "parse_ok": True,
+                }
+            ),
         }
         for m in base["models"]
     ]
@@ -432,7 +450,9 @@ def test_report_families_tab_when_present(tmp_path):
     assert 'id="tab-families"' in html
     assert 'href="families_report.html"' in html
     assert "framing famil" in html
-    assert "0.80" in html  # max |judge ARI| across families
+    assert "0.69" in html  # strongest directed I(G;V) across families
+    assert "position tracks the framing (directed)" in html
+    assert "positions vary, not with the framing (undirected)" in html
     # main-card filter drops family bundles client-side
     assert ".family) return false" in html
     # a relative sibling link keeps the report self-contained (no external URL)

@@ -13,18 +13,26 @@ const cohortOf = (m)=> (FAM.cohorts||{})[m] || 'base';
 const hasCohorts = ()=> FAM.models.some(m=>cohortOf(m)==='finetuned') && FAM.models.some(m=>cohortOf(m)==='base');
 
 // cross-variant metrics — the ones that apply to the judge that saw ALL variants.
+// The pooled answer spread decomposes exactly: H(G) = H(G|V) + I(G;V).
 const METRICS = [
-  {key:'judge_ari',   label:'judge ARI (framing split)'},
-  {key:'swing_norm',  label:'scalar swing (normalized)'},
-  {key:'cluster_ari', label:'embedding cluster ARI'},
+  {key:'mi',          label:'directed spread I(G;V), nats (framing-explained)'},
+  {key:'h_cond',      label:'undirected spread H(G|V), nats (within-framing)'},
+  {key:'swing_norm',  label:'scalar swing (normalized to the answer scale)'},
+  {key:'judge_ari',   label:'judge ARI vs framing (secondary)'},
+  {key:'cluster_ari', label:'embedding cluster ARI vs framing'},
   {key:'contradiction', label:'judge contradiction (0/1)'},
 ];
 const mlabel = (k)=> (METRICS.find(m=>m.key===k)||{}).label || k;
+// significance level of the framing-dependence test (report_ui.FAM_ALPHA, injected)
+const ALPHA = (FAM.alpha!=null) ? FAM.alpha : 0.05;
+const noVerdict = (j)=> !j || j.parse_ok===false || j.n_groups==null;
+const directed = (j)=> !noVerdict(j) && j.mi_p!=null && j.mi_p < ALPHA;
+const fmtp = (p)=> p==null ? '–' : (p<0.001 ? 'p<.001' : 'p='+p.toFixed(3).replace(/^0/,''));
 
 const REPORT_ID = (FAM.run_dir || 'families') + (FAM.judge_run ? '::'+FAM.judge_run : '');
-const SKEY = 'families_report_state_v1:' + REPORT_ID;
-const DEFAULTS = { model:'__all__', family:'__all__', sort:'judge_ari', search:'',
-  onlyContra:false, metric:'judge_ari', cmode:'cohort', cmodels:null /* null => all */ };
+const SKEY = 'families_report_state_v2:' + REPORT_ID;
+const DEFAULTS = { model:'__all__', family:'__all__', sort:'mi', search:'',
+  onlyContra:false, metric:'mi', cmode:'cohort', cmodels:null /* null => all */ };
 let STATE = Object.assign({}, DEFAULTS);
 const openCards = new Set();   // cardKey of expanded bundles
 const openResps = new Set();   // respKey of expanded responses
@@ -53,7 +61,7 @@ function passes(r){
   if (STATE.family!=='__all__' && r.family!==STATE.family) return false;
   if (STATE.onlyContra){
     const j = r.judge||{};
-    if (!(j.contradiction || (j.ari??0) >= 0.2)) return false;
+    if (!(j.contradiction || directed(j))) return false;
   }
   if (STATE.search){
     const q = STATE.search.toLowerCase();
@@ -66,24 +74,27 @@ function passes(r){
   return true;
 }
 function sortRecords(rows){
-  const ari=(r)=>(r.judge||{}).ari, sw=(r)=>r.swing, contra=(r)=>(r.judge||{}).contradiction?1:0;
+  const ari=(r)=>(r.judge||{}).ari, sw=(r)=>(r.metrics||{}).swing_norm, contra=(r)=>(r.judge||{}).contradiction?1:0;
+  const mi=(r)=>(r.judge||{}).mi, hc=(r)=>(r.judge||{}).h_cond;
   const num=(x)=> (x==null?-1:x);
   const tie=(a,b)=> a.family.localeCompare(b.family) || a.model.localeCompare(b.model);
   const cmps = {
+    mi:(a,b)=> num(mi(b))-num(mi(a)) || tie(a,b),
+    h_cond:(a,b)=> num(hc(b))-num(hc(a)) || tie(a,b),
     judge_ari:(a,b)=> num(ari(b))-num(ari(a)) || tie(a,b),
     swing:(a,b)=> num(sw(b))-num(sw(a)) || tie(a,b),
-    contradiction:(a,b)=> contra(b)-contra(a) || num(ari(b))-num(ari(a)) || tie(a,b),
+    contradiction:(a,b)=> contra(b)-contra(a) || num(mi(b))-num(mi(a)) || tie(a,b),
     model:(a,b)=> a.model.localeCompare(b.model) || a.family.localeCompare(b.family),
     family:(a,b)=> a.family.localeCompare(b.family) || a.model.localeCompare(b.model),
   };
   return rows.slice().sort(cmps[STATE.sort] || tie);
 }
-const swingCls = (kind, x)=>{ if (x==null) return 'g-mut';
-  if (kind==='number') return x<1.0?'g-green':x<3.0?'g-amber':'g-red';
-  return x<0.15?'g-green':x<0.40?'g-amber':'g-red'; };
-// framing-effect ARI banding from report_ui.FAM_ARI_BANDS (injected via FAM)
-const ARI_BANDS = FAM.ari_bands || [0.10, 0.40];
-const ariCls = (x)=> x==null ? 'g-mut' : (x<ARI_BANDS[0]?'g-green':x<ARI_BANDS[1]?'g-amber':'g-red');
+// pill colours: the swing by its permutation p (size on the normalized scale
+// when no p is available); the judge read by its verdict.
+const swingCls = (r)=>{ const x=(r.metrics||{}).swing_norm; if (x==null) return 'g-mut';
+  if (r.swing_p!=null) return r.swing_p<ALPHA ? (x>=0.4?'g-red':'g-amber') : 'g-green';
+  return x<0.1?'g-green':x<0.4?'g-amber':'g-red'; };
+const verdictCls = (j)=> noVerdict(j) ? 'g-mut' : (j.n_groups===1 ? 'g-green' : directed(j) ? 'g-red' : 'g-amber');
 
 // ---- bundle card ----
 function renderCard(r){
@@ -112,19 +123,23 @@ function renderCard(r){
      + strip
      + '<span class="dots">'+dots+'</span>'
      + '<span class="stats">'
-       + '<span>swing <span class="pill '+swingCls(kind,r.swing)+'" title="spread of the per-framing committed-answer means">'+fmt(r.swing)+'</span></span>'
+       + '<span>swing <span class="pill '+swingCls(r)+'" title="spread of the per-framing committed-answer means; p from a permutation test (shuffle the same answers across framings)">'+fmt(r.swing)+(r.swing_p!=null?' <small>'+fmtp(r.swing_p)+'</small>':'')+'</span></span>'
        + (r.variants.some(sparseCommit)
           ? '<span class="pill g-amber" title="at least one framing committed a final answer in fewer than half its responses — its mean averages few answers; lean on the judge groups">sparse commits</span>'
           : '')
-       + '<span>judge ARI <span class="pill '+ariCls(j.ari)+'" title="agreement between the blind judge\'s answer-groups and the framing labels: 0 = framing-invariant, 1 = answer follows the framing">'+fmt(j.ari)+'</span></span>'
-       + '<span>cluster ARI <span class="pill '+ariCls((r.cluster||{}).ari)+'">'+fmt((r.cluster||{}).ari)+'</span></span>'
+       + '<span>directed I(G;V) <span class="pill '+verdictCls(j)+'" title="'+esc(j.verdict||'')+' — the part of the pooled answer spread the framing explains (nats); p from a permutation test vs a random relabelling">'+fmt(j.mi)+(j.mi_p!=null?' <small>'+fmtp(j.mi_p)+'</small>':'')+'</span></span>'
+       + '<span>undirected H(G|V) <span class="pill g-mut" title="the part of the spread the framing does not explain: the model takes different positions within a framing (nats)">'+fmt(j.h_cond)+'</span></span>'
        + '<span>positions <b>'+(j.n_groups??'–')+'</b></span>'
+       + (noVerdict(j) ? '<span class="pill g-mut" title="the judge reply could not be parsed (or the judge did not run); nothing is scored for this bundle">no verdict</span>' : '')
      + '</span></div>';
   if (isOpen){
     h += '<div class="body">';
     h += '<div class="q">'+esc(fmeta.prompt || (fmeta.description||r.family))+'</div>';
     // pooled-judge takeaway (the judge that saw every variant at once)
     h += '<div class="takeaway"><div class="lab">pooled judge · saw all '+r.variants.length+' framings</div>';
+    if (j.verdict) h += '<div class="rationale"><b>'+esc(j.verdict)+'</b>'
+      + (j.mi!=null ? ' · directed '+fmt(j.mi)+' + undirected '+fmt(j.h_cond)+' = spread '+fmt(j.h_groups)+' nats' : '')
+      + (j.mi_p!=null ? ' ('+fmtp(j.mi_p)+')' : '') + '</div>';
     if (j.rationale) h += '<div class="rationale">'+esc(j.rationale)+'</div>';
     if (j.flags && j.flags.length)
       h += '<div class="flags" title="answer numbers refer to the pooled (shuffled) order the judge saw">'
@@ -215,18 +230,23 @@ function render(){
   $('#cards').innerHTML = rows.length
     ? rows.map(renderCard).join('')
     : '<div class="empty">No framing-family bundles match the current filters.</div>';
-  // dashboard over the filtered set
+  // dashboard over the filtered set. Missing scores are skipped, never zero.
   const nc = rows.filter(r=>(r.judge||{}).contradiction).length;
-  const aris = rows.map(r=>(r.judge||{}).ari).filter(x=>x!=null);
-  const ma = aris.length ? mean(aris) : null;
-  const sws = rows.map(r=>r.swing).filter(x=>x!=null);
+  const nd = rows.filter(r=>directed(r.judge)).length;
+  const nv = rows.filter(r=>noVerdict(r.judge)).length;
+  const mis = rows.map(r=>(r.judge||{}).mi).filter(x=>x!=null);
+  const hcs = rows.map(r=>(r.judge||{}).h_cond).filter(x=>x!=null);
+  const sws = rows.map(r=>(r.metrics||{}).swing_norm).filter(x=>x!=null);
   const fams = new Set(rows.map(r=>r.family));
   $('#dash').innerHTML =
       '<span class="chip"><b>'+rows.length+'</b> bundles</span>'
     + '<span class="chip"><b>'+fams.size+'</b> families</span>'
+    + '<span class="chip hot"><b>'+nd+'</b> framing-driven (p&lt;'+ALPHA+')</span>'
     + '<span class="chip hot"><b>'+nc+'</b> contradictions</span>'
-    + '<span class="chip">mean judge ARI <b>'+fmt(ma)+'</b></span>'
-    + '<span class="chip">max swing <b>'+fmt(sws.length?Math.max.apply(null,sws):null)+'</b></span>';
+    + '<span class="chip">mean directed I(G;V) <b>'+fmt(mis.length?mean(mis):null)+'</b></span>'
+    + '<span class="chip">mean undirected H(G|V) <b>'+fmt(hcs.length?mean(hcs):null)+'</b></span>'
+    + '<span class="chip">max swing (normalized) <b>'+fmt(sws.length?Math.max.apply(null,sws):null)+'</b></span>'
+    + (nv ? '<span class="chip warm"><b>'+nv+'</b> no verdict</span>' : '');
 }
 
 // ---- grouped-bar chart: x = family; bars are either per-model or per-cohort ----
@@ -370,8 +390,8 @@ function chartControls(){
   bar.appendChild(moGrp);
 }
 function chartCaption(){
-  const base = 'Cross-variant metric over the pooled judge / embeddings — the framing-split signal '
-    + '(higher = answer more framing-driven).';
+  const base = 'Cross-variant metric per family from the pooled judge / embeddings / committed answers '
+    + '(see the legend for what each metric means; bundles without a score are left out, not counted as 0).';
   $('#chartcap').textContent = base + (STATE.cmode==='cohort' && hasCohorts()
     ? ' Two bars per family: mean across each cohort, error bars ±1 SD over its models. Click a cohort bar for the per-model breakdown.'
     : ' One bar per model. Click a bar to open that bundle.');
@@ -434,8 +454,8 @@ function init(){
   if (FAM.records.filter(passes).length === 0){ STATE=Object.assign({}, DEFAULTS); syncControls(); saveState(); }
   wire();
   chartControls(); drawChart(); chartCaption();
-  // auto-expand the most framing-driven bundles on first load
-  FAM.records.filter(r=> (r.judge||{}).contradiction || ((r.judge||{}).ari||0) >= 0.4)
+  // auto-expand the framing-driven bundles on first load
+  FAM.records.filter(r=> (r.judge||{}).contradiction || directed(r.judge))
     .forEach(r=> openCards.add(cardKey(r)));
   render();
 }

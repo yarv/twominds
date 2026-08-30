@@ -191,11 +191,11 @@ def test_all_questions_selects_every_bucket(keyless):
 
 
 def test_families_flag_selects_variants(keyless):
-    fam_qs = _selected(families=["poem_rating"])
+    fam_qs = _selected(families=["leading_question"])
     assert len(fam_qs) >= 2
     result = runner.invoke(
         VE.app,
-        ["run", "--dry-run", "--families", "poem_rating", "--models", "gpt-4.1"],
+        ["run", "--dry-run", "--families", "leading_question", "--models", "gpt-4.1"],
     )
     assert result.exit_code == 0, _out(result)
     assert f"1 models x {len(fam_qs)} questions" in result.output

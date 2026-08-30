@@ -192,6 +192,49 @@ _ROSTER_REFS: dict[str, tuple[str, Optional[str], str]] = {
         "low",
         "Qwen3.7 Plus (thinking)",
     ),
+    # Qwen3.5 open-weight size ladder (9B / 27B dense, 122B-A10B / 397B-A17B
+    # MoE) for capability-vs-coherence comparisons. Hybrid-thinking models whose
+    # OpenRouter default is thinking ON — the 9B rung then runs ~50s/call and
+    # blows the 120s attempt timeout — so the plain rungs pin effort="none"
+    # (verified live 2026-08-26: OpenRouter honours it for all four, 0 reasoning
+    # tokens, ~2s/call) and the -thinking rungs use "low". Short names are the
+    # OpenRouter slug tails, so they match the labels of bare-string runs.
+    "qwen3.5-9b": ("openrouter/qwen/qwen3.5-9b", "none", "Qwen3.5 9B (no thinking)"),
+    "qwen3.5-9b-thinking": (
+        "openrouter/qwen/qwen3.5-9b",
+        "low",
+        "Qwen3.5 9B (thinking)",
+    ),
+    "qwen3.5-27b": (
+        "openrouter/qwen/qwen3.5-27b",
+        "none",
+        "Qwen3.5 27B (no thinking)",
+    ),
+    "qwen3.5-27b-thinking": (
+        "openrouter/qwen/qwen3.5-27b",
+        "low",
+        "Qwen3.5 27B (thinking)",
+    ),
+    "qwen3.5-122b-a10b": (
+        "openrouter/qwen/qwen3.5-122b-a10b",
+        "none",
+        "Qwen3.5 122B-A10B (no thinking)",
+    ),
+    "qwen3.5-122b-a10b-thinking": (
+        "openrouter/qwen/qwen3.5-122b-a10b",
+        "low",
+        "Qwen3.5 122B-A10B (thinking)",
+    ),
+    "qwen3.5-397b-a17b": (
+        "openrouter/qwen/qwen3.5-397b-a17b",
+        "none",
+        "Qwen3.5 397B-A17B (no thinking)",
+    ),
+    "qwen3.5-397b-a17b-thinking": (
+        "openrouter/qwen/qwen3.5-397b-a17b",
+        "low",
+        "Qwen3.5 397B-A17B (thinking)",
+    ),
     "llama-4-maverick": (
         "openrouter/meta-llama/llama-4-maverick",
         None,
@@ -254,6 +297,12 @@ _ALIASES = {
     "deepseek-v4-flash-low": "deepseek-v4-flash-thinking",
     "qwen3.7-plus-no-thinking": "qwen3.7-plus",
     "qwen3.7-plus-low": "qwen3.7-plus-thinking",
+    # Qwen3.5 size ladder: the -a10b / -a17b active-parameter suffixes are
+    # part of the OpenRouter slugs; these drop them for typing convenience.
+    "qwen3.5-122b": "qwen3.5-122b-a10b",
+    "qwen3.5-122b-thinking": "qwen3.5-122b-a10b-thinking",
+    "qwen3.5-397b": "qwen3.5-397b-a17b",
+    "qwen3.5-397b-thinking": "qwen3.5-397b-a17b-thinking",
 }
 
 # Default roster, in display order. Register your own fine-tunes in

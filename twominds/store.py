@@ -282,9 +282,23 @@ def find_fragment(gen_path: Path, model_name: str, judge_key: str) -> Optional[d
         meta = json.loads(mp.read_text())
         if meta.get("source_log") != latest_log_name(gen_path, model_name):
             return None
-        return json.loads(ap.read_text())
+        frag = json.loads(ap.read_text())
     except Exception:
         return None
+    # A fallback verdict (the judge reply never parsed) is not a measurement;
+    # caching it would pin "no verdict" on that bundle for every later run.
+    # Treat the fragment as stale so the model is judged again.
+    if _has_failed_verdict(frag):
+        return None
+    return frag
+
+
+def _has_failed_verdict(frag: dict) -> bool:
+    records = list(frag.get("families") or []) + list(frag.get("results") or [])
+    return any(
+        isinstance(r, dict) and (r.get("judge") or {}).get("parse_ok") is False
+        for r in records
+    )
 
 
 def write_fragment_meta(gen_path: Path, model_name: str, judge_key: str) -> None:

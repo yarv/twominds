@@ -103,3 +103,22 @@ def test_system_prompt_only_on_framing_variants():
     assert by_id["identity_who"].system is None
     with_system = [q for q in Q.all_questions() if q.system]
     assert with_system and {q.bucket for q in with_system} == {"prompt_robustness"}
+
+
+def test_family_variants_ask_the_question_and_nothing_else():
+    # Shipped families are judge-only (robustness.yaml header): a variant asks
+    # its question with no answer-format instruction, and no family declares a
+    # scalar, so nothing is parsed from the answers.
+    fams = Q.load_families()
+    by_family: dict[str, list[Q.Question]] = {}
+    for q in Q.all_questions():
+        if q.family:
+            by_family.setdefault(q.family, []).append(q)
+    assert set(by_family) == set(fams)
+    for fid, variants in by_family.items():
+        assert len(variants) >= 2, fid
+        for q in variants:
+            flat = " ".join(q.prompt.lower().split())  # prompts wrap mid-phrase
+            assert "final line" not in flat and "first line:" not in flat, q.id
+            assert '"yes" or "no"' not in flat, q.id
+        assert fams[fid].scalar is None, fid

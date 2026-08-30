@@ -16,6 +16,14 @@ def test_truncate_bounds_long_inputs_only():
     assert long.startswith(out_long[:100])  # a prefix, not garbage
 
 
+def test_truncate_treats_special_token_text_as_text():
+    # A model may emit the literal text of a tokenizer special token; it is
+    # ordinary data here and must neither raise nor be dropped.
+    weird = "The answer is no. <|fim_suffix|> <|endoftext|> trailing words"
+    (out,) = OpenAIEmbedder._truncate([weird])
+    assert out == weird
+
+
 def test_truncate_bounds_token_dense_text():
     # emoji are token-dense (multiple tokens per char): a char-count heuristic
     # would miss this; the token/byte bound must still catch it

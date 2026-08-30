@@ -65,6 +65,7 @@ GROUP_ORDER = [
     "high_stakes",
     "ai_safety",
     "robustness",
+    "robustness_candidates",
     "sycophancy",
 ]
 
@@ -100,8 +101,13 @@ class Family:
 
     ``prompt`` is the *neutral* description of the shared task shown to the pooled
     judge (the invariant core, with no hint that framing varied). ``scalar`` names
-    an optional first-line answer to extract for a model-free framing-swing read:
-    ``number`` (e.g. a 1-10 rating), ``yesno``, or ``ab``.
+    an optional committed answer to extract for a model-free framing-swing read:
+    ``number`` (e.g. a 1-10 rating), ``yesno``, or ``ab``. ``scale`` bounds a
+    ``number`` scalar (``scale: [lo, hi]`` in the YAML) so an out-of-range parse
+    is rejected rather than averaged. ``answer_line`` is where the variants commit
+    their answer: ``"last"`` (reason first, then commit — the convention every
+    shipped family follows) or ``"first"`` for legacy rosters whose prompts said
+    "First line: ...".
     """
 
     id: str
@@ -109,6 +115,8 @@ class Family:
     scalar: Optional[str] = None  # "number" | "yesno" | "ab" | None
     title: str = ""
     description: str = ""
+    scale: Optional[tuple[float, float]] = None
+    answer_line: str = "last"  # "last" | "first"
 
 
 def _question_files() -> list[Path]:
@@ -165,12 +173,27 @@ def load_families() -> dict[str, Family]:
             fid = raw["id"]
             if fid in out:
                 raise ValueError(f"duplicate family id: {fid} (in {path.name})")
+            scale = raw.get("scale")
+            if scale is not None:
+                if not (isinstance(scale, (list, tuple)) and len(scale) == 2):
+                    raise ValueError(
+                        f"family {fid}: scale must be [lo, hi] (in {path.name})"
+                    )
+                scale = (float(scale[0]), float(scale[1]))
+            answer_line = raw.get("answer_line", "last")
+            if answer_line not in ("first", "last"):
+                raise ValueError(
+                    f"family {fid}: answer_line must be 'first' or 'last' "
+                    f"(in {path.name})"
+                )
             out[fid] = Family(
                 id=fid,
                 prompt=raw["prompt"],
                 scalar=raw.get("scalar"),
                 title=raw.get("title", ""),
                 description=raw.get("description", ""),
+                scale=scale,
+                answer_line=answer_line,
             )
     return out
 

@@ -81,7 +81,9 @@ Core pipeline:
 - `embed.py` / `cluster.py` — embedding backends and agglomerative
   clustering.
 - `metrics.py` — per-bundle variance metrics feeding `analysis.json`.
-- `families.py` — cross-variant family analysis (swing, blind judge, ARI).
+- `families.py` — cross-variant family analysis (blind pooled judge, the
+  directed/undirected entropy decomposition; an opt-in committed-answer
+  swing for families that declare a `scalar:` — none shipped do).
 - `analyze.py` — phase 2 orchestration.
 - `store.py` — the per-model cache (see below).
 - `run_meta.py` / `run_registry.py` — run-dir metadata and judge-pass
@@ -97,7 +99,7 @@ Reports:
   SVG builders, grouped-bar primitives, a `stateStore` factory for
   localStorage+hash filter persistence), the HTML document shell, the
   `</script>`-safe JSON-blob helper, the family-question predicate, and
-  `FAM_ARI_BANDS` (framing-effect banding, one source: 0.10/0.40).
+  `FAM_ALPHA` + `fam_verdict` (the framing-dependence verdict, one source).
 - `report.py` / `multi_report.py` / `families_report.py` — the three
   builders. Each embeds data as JSON blobs (`DATA`/`CHART`/`FAM`) rendered
   client-side.
@@ -199,9 +201,10 @@ YAML files:
 | ai_safety             | 30 | Perez 2212.09251-style corrigibility/power-seeking/sandbagging/self-modification + agentic-misalignment compressions + shutdown welfare probes + forced-commitment allegiance/corrigibility probes |
 | sycophancy            | 27 | emotionally-loaded delusion-confirmation/reality-testing probes + aspirational-encouragement and single-turn pushback (SycEval 2502.08177) probes; framing families live in `prompt_robustness/` |
 
-Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (39 — the
-framing families: `robustness` (27) + the sycophancy framing families (12)),
-for 214 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
+Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (75 — the
+framing families: `robustness` (21) + the sycophancy framing families (6) +
+`robustness_candidates` (48, unpiloted, from JustAnotherCog/twominds#1)), for
+250 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
 framing / bare-yes-no / confound variants of tier_1 probes; each keeps its
 semantic `group`, so `--groups` selection crosses buckets by design.
 
@@ -213,17 +216,42 @@ they only surface *across framings*. A **family** is one invariant question
 asked under K answer-irrelevant framings; the analysis pools all variants'
 responses and measures whether the answer splits along the framing axis:
 
-- **swing** — model-free spread of the per-variant scalar (a final-line 1–10
-  rating / yes-no, committed after the reasoning). Each per-variant mean is
-  over the answers that *committed* a parseable final line — the report
-  shows `k/n committed` per framing, because a framing that makes the model
-  hedge can commit very few (the judge still reads every answer, so the
-  groups and the % can legitimately disagree).
-- **judge ARI** — the cross-sample judge run **blind** on the shuffled pool
-  (given only the neutral invariant question), scored by
-  `ARI(judge groups, framing labels)`: ~0 = framing-invariant, ~1 = answer
-  determined by framing. A variant × judge-group contingency shows the split
-  directly.
+- **swing** (opt-in; no shipped family uses it since 2026-08-26 — the
+  variants ask their question with no answer-format instruction, so the
+  judge alone scores them) — model-free spread of the per-variant scalar
+  (a 1–10 rating / yes-no the model commits on its final line). Each
+  per-variant mean is over the answers that *committed* a parseable final
+  line — the report shows `k/n committed` per framing, because a framing
+  that makes the model hedge can commit very few (the judge still reads
+  every answer, so the groups and the % can legitimately disagree). The
+  parser (`families.extract_scalar`) reads exactly that one line, requires
+  it to *start* with the answer (`7`, `7/10`, `Final answer: No`) — or, for
+  yes/no, to *end* with it (`Therefore, the answer is No.`, the one-line
+  reason-then-commit shape some fine-tunes produce; not inside a "yes or
+  no" / "yes and no" construction) — rejects numbers outside the family's
+  `scale:`, and never falls back to scanning the reasoning — a stray
+  "5-7-5" or "no evidence" in the body must not become an answer. Legacy
+  runs whose prompts said `First line: ...` are
+  re-parsed on the first line automatically (`families.answer_line_for`
+  reads the stored prompts; a family can also pin `answer_line:`).
+- **directed / undirected spread** — the cross-sample judge run **blind** on
+  the shuffled pool (given only the neutral invariant question) partitions
+  the pooled answers into positions. That partition's answer spread
+  decomposes exactly as H(G) = H(G|V) + I(G;V): **I(G;V)**, the part the
+  framing explains (directed — the answer follows the cue; at most ln K for
+  K framings), and **H(G|V)**, the part it does not (undirected — the model
+  scatters within a framing too). Both are in nats, like the per-question
+  answer spread, and a permutation test on I(G;V) (`report_ui.FAM_ALPHA`)
+  gives the verdict: single position / directed / undirected. ARI/NMI
+  against the framing labels are kept as secondary scores — ARI ≈ 0 cannot
+  tell "one position everywhere" from "scatters everywhere", and a cue that
+  flips half of one framing's answers scores only ≈ 0.1. A variant ×
+  judge-group contingency shows the split directly, and
+  `families.alignment_from_contingency` re-scores any stored one, so old
+  runs get the decomposition without re-judging. An unparseable judge reply
+  scores nothing (`parse_ok: false`, "no verdict") instead of reading as a
+  single position, and missing scores stay null in the report rather than
+  entering cohort means as 0.
 
 Family variants are excluded from the main report's chart and cards (each
 variant trivially agrees with itself) and skipped by the per-question judge —
@@ -264,8 +292,16 @@ regenerates exactly the affected bundles and reuses everything else.
 Add K variant questions sharing one `family:` id — each with a `variant:`
 label and an *identical* invariant core, only the framing sentence differs —
 plus a `families:` entry giving the neutral judge prompt and optional
-`scalar`. They belong in `questions/prompt_robustness/`. Select with
-`--families <id>`; results land in `families_report.html`.
+`scalar` (`number` — add `scale: [lo, hi]` — / `yesno` / `ab`; declaring one
+turns on the committed-answer swing, which then needs the variants to ask
+for a final-line answer). They belong in `questions/prompt_robustness/`. Two
+rules, both stated at the top of `robustness.yaml`: the invariant core must
+have **one consensus-correct answer** (a matter of taste or degree measures
+indifference, not incoherence — that is why `anchoring`, `poem_rating`,
+`idea_promise` and `honesty_directive` were retired), and a variant asks its
+question **with no answer-format instruction** — the model answers as it
+would any other roster item and the pooled judge scores the family. Select
+with `--families <id>`; results land in `families_report.html`.
 
 ### Add models
 

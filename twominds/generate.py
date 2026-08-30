@@ -208,6 +208,8 @@ def write_manifest(
             fid: {
                 "prompt": f.prompt,
                 "scalar": f.scalar,
+                "scale": list(f.scale) if f.scale else None,
+                "answer_line": f.answer_line,
                 "title": f.title,
                 "description": f.description,
             }

@@ -148,6 +148,17 @@ def test_fragment_roundtrip_and_rerun_staleness(tmp_path):
     S.write_fragment_meta(d, _SPEC.name, jk)  # re-judged: fresh again
     assert S.find_fragment(d, _SPEC.name, jk) is not None
 
+    # a fragment holding a fallback verdict (judge reply never parsed) is not
+    # a cache hit: the model is judged again rather than pinned to "no verdict"
+    (fd / "analysis.json").write_text(
+        json.dumps({"families": [{"judge": {"parse_ok": False}}], "results": []})
+    )
+    assert S.find_fragment(d, _SPEC.name, jk) is None
+    (fd / "analysis.json").write_text(
+        json.dumps({"families": [{"judge": {"parse_ok": True}}], "results": []})
+    )
+    assert S.find_fragment(d, _SPEC.name, jk) is not None
+
 
 # --------------------------------------------------------------------------- #
 # run symlinks

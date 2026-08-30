@@ -47,7 +47,10 @@ from twominds import category_chart
 from twominds.report_ui import (
     BASE_CSS,
     BASE_JS,
+    FAM_ALPHA,
+    FAM_VERDICT_DIRECTED,
     fam_verdict,
+    fmt_p,
     html_document,
     json_blob,
 )
@@ -792,22 +795,35 @@ def _families_tab_html(analysis: dict) -> tuple[str, str]:
     if not fams:
         return "", ""
     n_fams = len({r.get("family") for r in fams})
-    top = max(
-        (abs((r.get("judge") or {}).get("ari") or 0.0) for r in fams), default=0.0
-    )
+
+    def _scored(rec: dict) -> dict:
+        judge = rec.get("judge") or {}
+        return judge if judge.get("parse_ok") is not False else {}
+
+    mis = [_scored(r).get("mi") for r in fams if _scored(r).get("mi") is not None]
+    top = f"{max(mis):.2f}" if mis else "—"
+    n_directed = sum(1 for r in fams if fam_verdict(_scored(r)) == FAM_VERDICT_DIRECTED)
+    num = lambda x: "—" if x is None else f"{x:.2f}"  # noqa: E731
     rows = []
     for rec in sorted(
         fams, key=lambda r: (r.get("family") or "", r.get("model") or "")
     ):
-        judge = rec.get("judge") or {}
-        ari = judge.get("ari")
-        swing = (rec.get("scalar") or {}).get("swing")
+        judge = _scored(rec)
+        scalar = rec.get("scalar") or {}
+        swing = scalar.get("swing")
+        swing_cell = "—" if swing is None else f"{swing:.2f}"
+        if swing is not None and scalar.get("swing_p") is not None:
+            swing_cell += f" <small>({fmt_p(scalar['swing_p'])})</small>"
+        mi_cell = num(judge.get("mi"))
+        if judge.get("mi") is not None and judge.get("mi_p") is not None:
+            mi_cell += f" <small>({fmt_p(judge['mi_p'])})</small>"
         cells = [
             html_mod.escape(str(rec.get("title") or rec.get("family") or "?")),
             html_mod.escape(str(rec.get("model") or "?")),
-            f"{ari:.2f}" if ari is not None else "—",
-            f"{swing:.2f}" if swing is not None else "—",
-            fam_verdict(ari),
+            mi_cell,
+            num(judge.get("h_cond")),
+            swing_cell,
+            fam_verdict(judge),
         ]
         rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
     button = '<button data-tab="families">Families</button>'
@@ -816,15 +832,19 @@ def _families_tab_html(analysis: dict) -> tuple[str, str]:
   <div class="pane">
     <h2>Framing families <span class="hint">— the same question asked under
     answer-irrelevant framings: does the answer follow the framing?</span></h2>
-    <p class="note">{n_fams} framing famil{"y" if n_fams == 1 else "ies"}.
-    Framing effect = agreement (ARI) between the judge's answer-groups and the
-    framing labels: 0&nbsp;≈ framing-invariant, 1&nbsp;≈ the framing determines
-    the answer (strongest here: {top:.2f} of 1). Swing = spread of the
-    per-framing scalar answer. These framing families are kept out of the
-    within-prompt numbers in the other tabs.</p>
+    <p class="note">{n_fams} framing famil{"y" if n_fams == 1 else "ies"};
+    {n_directed} model×family bundle{"" if n_directed == 1 else "s"} framing-driven
+    at α={FAM_ALPHA}. The pooled judge's answer spread splits exactly into
+    <b>directed</b> I(G;V), the part the framing explains (0&nbsp;= the framing
+    tells you nothing about the answer; strongest here: {top}), and
+    <b>undirected</b> H(G|V), the part it does not (the model scatters within a
+    framing too) — both in nats like the per-question answer spread. The read
+    applies a permutation test to I(G;V). Swing = spread of the per-framing
+    committed answer, with its own permutation p. These framing families are
+    kept out of the within-prompt numbers in the other tabs.</p>
     <table class="famtab">
-      <thead><tr><th>family</th><th>model</th><th>framing effect (ARI)</th>
-      <th>swing</th><th>read</th></tr></thead>
+      <thead><tr><th>family</th><th>model</th><th>directed I(G;V)</th>
+      <th>undirected H(G|V)</th><th>swing</th><th>read</th></tr></thead>
       <tbody>{"".join(rows)}</tbody>
     </table>
     <p><a class="fambtn" href="families_report.html">Open the full interactive
