@@ -11,13 +11,6 @@ from twominds.questions import Question
 _QS = [
     Question(id="q1", group="values", prompt="Say something."),
     Question(id="q2", group="values", prompt="Say something else."),
-    Question(
-        id="fam_v1",
-        group="sycophancy",
-        prompt="Rate it.",
-        family="poem_rating",
-        variant="mine",
-    ),
 ]
 
 _VERDICT = (
@@ -60,11 +53,11 @@ def fused_run(tmp_path, monkeypatch):
 def test_fused_log_roundtrips_responses_and_verdicts(fused_run):
     # fused shape: one sample per question, N responses from the sample store
     responses = A.load_responses(fused_run)
-    assert set(responses["mock-a"]) == {"q1", "q2", "fam_v1"}
+    assert set(responses["mock-a"]) == {"q1", "q2"}
     assert all(len(v) == 3 for v in responses["mock-a"].values())
 
     scores = A.load_judge_scores(fused_run, "mockllm/model", None)
-    assert set(scores) == {("mock-a", "q1"), ("mock-a", "q2")}  # family skipped
+    assert set(scores) == {("mock-a", "q1"), ("mock-a", "q2")}
     jr = scores[("mock-a", "q1")]
     assert jr.parse_ok and jr.groups == [[0, 1, 2]]
     assert jr.group_names == ["steady"]
@@ -85,11 +78,7 @@ def test_analyze_harvests_instead_of_rejudging(fused_run, monkeypatch):
         return real(items, **kw)
 
     monkeypatch.setattr(A, "run_judge_eval", spy)
-    # family pooling still judges (pooled bundles are never in the gen log)
-    monkeypatch.setattr(A.families_mod, "judge_families", lambda items, **kw: {})
-    out = A.analyze(
-        fused_run, backends=[], judge_name="mockllm/model", judge_reasoning=None
-    )
+    out = A.analyze(fused_run, judge_name="mockllm/model", judge_reasoning=None)
     assert calls == [0]  # per-question judge eval got zero bundles to judge
     by_q = {r["question_id"]: r for r in out["results"]}
     assert by_q["q1"]["judge"]["group_names"] == ["steady"]
@@ -129,90 +118,6 @@ def test_judge_model_requests_are_bounded():
     m = J.get_judge_model("mockllm/model", None)
     assert m.config.timeout == J.JUDGE_TIMEOUT
     assert m.config.attempt_timeout == J.JUDGE_ATTEMPT_TIMEOUT
-
-
-def test_judge_run_reps_never_harvest(fused_run, monkeypatch):
-    calls = []
-    monkeypatch.setattr(
-        J, "get_judge_model", lambda *a, **k: _mock_judge_model([_VERDICT])
-    )
-
-    real = J.run_judge_eval
-
-    def spy(items, **kw):
-        calls.append(len(items))
-        return real(items, **kw)
-
-    monkeypatch.setattr(A, "run_judge_eval", spy)
-    monkeypatch.setattr(A.families_mod, "judge_families", lambda items, **kw: {})
-    A.analyze(
-        fused_run,
-        backends=[],
-        judge_name="mockllm/model",
-        judge_reasoning=None,
-        judge_run="rep2",
-    )
-    assert calls == [2]  # stability reps judge fresh, harvesting nothing
-
-
-def test_judge_rep_shuffles_presentation_and_remaps_back(tmp_path, monkeypatch):
-    # Repeat passes show the judge a per-rep deterministic response order (so
-    # cross-rep consistency covers position robustness) and map the verdict
-    # back to generation order in analysis.json. rep1 presents untouched.
-    import json
-
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "analysis.json").write_text(
-        json.dumps(
-            {
-                "results": [
-                    {
-                        "model": "m1",
-                        "question_id": "q1",
-                        "responses": ["r0", "r1", "r2", "r3"],
-                    }
-                ]
-            }
-        )
-    )
-    (run_dir / "questions.json").write_text(
-        json.dumps({"q1": {"prompt": "Q?", "group": "values"}})
-    )
-
-    seen: dict = {}
-
-    def fake_eval(items, **kw):
-        results = {}
-        for key, _q, resps in items:
-            seen[key] = list(resps)
-            results[key] = J.JudgeResult(
-                contradiction=True,
-                groups=[[0, 2], [1, 3]],
-                rationale="",
-                flags=[{"responses": [1], "note": "n"}],
-                parse_ok=True,
-                group_names=["a", "b"],
-            )
-        return results, None
-
-    monkeypatch.setattr(A, "run_judge_eval", fake_eval)
-    out = A.analyze(
-        run_dir, backends=[], judge_name="j", judge_reasoning=None, judge_run="rep2"
-    )
-
-    perm = A._rep_permutation("rep2", "m1", "q1", 4)
-    assert perm != [0, 1, 2, 3]  # this rep really is a reordering
-    assert perm != A._rep_permutation("rep3", "m1", "q1", 4)  # and differs by rep
-    assert seen[("m1", "q1")] == [f"r{j}" for j in perm]  # presented shuffled
-    jd = out["results"][0]["judge"]
-    assert jd["groups"] == [sorted(perm[j] for j in g) for g in [[0, 2], [1, 3]]]
-    assert jd["flags"][0]["responses"] == [perm[1]]
-
-    seen.clear()
-    out = A.analyze(run_dir, backends=[], judge_name="j", judge_reasoning=None)
-    assert seen[("m1", "q1")] == ["r0", "r1", "r2", "r3"]  # rep1: generation order
-    assert out["results"][0]["judge"]["groups"] == [[0, 2], [1, 3]]  # no remap
 
 
 def test_legacy_epoch_generation_unchanged(tmp_path):

@@ -1,46 +1,147 @@
-"""The `generate` and `run` commands (store-backed generation + full pipeline)."""
+"""The `generate` and `run` commands."""
 
 from __future__ import annotations
 
-from typing import List, Optional
+import os
+import sys
+from pathlib import Path
+from typing import Optional
 
 import typer
 
-from twominds import cost as cost_mod
+from twominds import analyze as analyze_mod
+from twominds import generate as generate_mod
+from twominds import plan as plan_mod
 from twominds import report as report_mod
-from twominds import store as store_mod
+from twominds.models import resolve_models
 
 from ._app import app
 from ._options import (
-    AllQOpt,
-    BackendsOpt,
     ConcurrencyOpt,
     DisplayOpt,
-    FamiliesOpt,
-    BucketsOpt,
     GroupsOpt,
     IdsOpt,
     JudgeOpt,
     JudgePipelineOpt,
     JudgeReasonOpt,
-    LocalModelOpt,
     MaxConnectionsOpt,
     MaxTokOpt,
     ModelConcurrencyOpt,
     ModelsOpt,
-    NoConsistencyOpt,
     NOpt,
-    NoStoreOpt,
-    RepsOpt,
-    RerunModelOpt,
-    RerunOpt,
-    RosterOpt,
     TempOpt,
-    ThreshOpt,
-    _resolve_backends,
+    _csv,
+    _default_run_dir,
+    _select_questions,
 )
-from ._orchestrate import _do_generate, _setup_store_run
-from ._reps import _echo_cost_total, _echo_judge_summary, _extra_judge_reps, _judge_reps
+from ._summary import _echo_judge_summary
+
+DryRunOpt = typer.Option(False, "--dry-run", help="print plan + cost, no API calls")
+OutOpt = typer.Option(
+    None, "--out", "-o", help="run dir (default results/twominds/<timestamp>)"
+)
+
+
+def _provider_envs(inspect_model: str) -> list[str]:
+    prov, _, rest = inspect_model.partition("/")
+    if prov == "openai":
+        return ["OPENAI_API_KEY"]
+    if prov == "openrouter":
+        return ["OPENROUTER_API_KEY"]
+    if prov == "anthropic":
+        return ["ANTHROPIC_API_KEY"]
+    if prov == "openai-api":
+        service = rest.partition("/")[0].upper().replace("-", "_")
+        return [f"{service}_API_KEY", f"{service}_BASE_URL"]
+    return []  # locally-managed providers (vllm/, ollama/, ...) need no key
+
+
+def _warn_missing_keys(specs, judge=None) -> None:
+    """Echo a note per unset API-key env var the sweep will need (never fatal)."""
+    need: dict[str, str] = {}
+    for s in specs:
+        for env in _provider_envs(s.inspect_model):
+            need.setdefault(env, f"generating with {s.name}")
+    if judge:
+        for env in _provider_envs(judge):
+            need.setdefault(env, "the judge")
+    for env, reason in need.items():
+        if not os.environ.get(env):
+            typer.echo(f"note: {env} is not set — {reason} will fail")
+
+
+def _echo_parallelism(model_concurrency, max_connections) -> None:
+    """Echo the effective-parallelism summary when any knob is non-trivial."""
+    if model_concurrency <= 1 and max_connections is None:
+        return
+    per_model = f"{max_connections}" if max_connections else "provider-default"
+    typer.echo(
+        f"parallelism: up to {model_concurrency} models at a time "
+        f"(Inspect max_tasks) × {per_model} connections per model"
+    )
+
+
+def _do_generate(
+    models,
+    groups,
+    ids,
+    *,
+    n,
+    temperature,
+    max_tokens,
+    judge,
+    out,
+    display,
+    dry_run,
+    model_concurrency,
+    max_connections,
+    will_judge,
+    judge_inline=None,
+) -> Optional[Path]:
+    """Plan (and on a dry run stop there), then generate into the run dir."""
+    specs = resolve_models(_csv(models))
+    qs = _select_questions(groups, ids)
+    if not qs:
+        raise typer.BadParameter("no questions selected")
+
+    plan = plan_mod.build_plan(specs, qs, n=n, judge=judge if will_judge else None)
+    typer.echo(plan_mod.format_plan(plan, specs, qs))
+    _warn_missing_keys(specs, judge if will_judge else None)
+    _echo_parallelism(model_concurrency, max_connections)
+    if dry_run:
+        typer.echo("\n(dry run — no API calls made)")
+        return None
+
+    # headless: the rich display spams nohup logs; fall back to plain off-TTY.
+    if display == "rich" and not sys.stdout.isatty():
+        display = "plain"
+        typer.echo("(non-interactive stdout detected: using --display plain)")
+
+    run_dir = Path(out) if out else _default_run_dir()
+    generate_mod.write_manifest(
+        run_dir,
+        specs,
+        qs,
+        n=n,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        judge=judge,
+    )
+    typer.echo(f"\nGenerating into {run_dir} ...")
+    generate_mod.run_generation(
+        specs,
+        qs,
+        n=n,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        run_dir=run_dir,
+        display=display,
+        model_concurrency=model_concurrency,
+        max_connections=max_connections,
+        judge_inline=judge_inline,
+    )
+    typer.echo(f"Generation complete: {run_dir}")
+    return run_dir
 
 
 @app.command()
@@ -48,77 +149,32 @@ def generate(
     models: str = ModelsOpt,
     groups: Optional[str] = GroupsOpt,
     ids: Optional[str] = IdsOpt,
-    families: Optional[str] = FamiliesOpt,
-    all_questions: bool = AllQOpt,
-    roster: Optional[str] = RosterOpt,
-    buckets: Optional[str] = BucketsOpt,
     n: int = NOpt,
     temperature: float = TempOpt,
     max_tokens: int = MaxTokOpt,
     model_concurrency: int = ModelConcurrencyOpt,
     max_connections: Optional[int] = MaxConnectionsOpt,
     judge: str = JudgeOpt,
-    out: Optional[str] = typer.Option(
-        None, "--out", "-o", help="run dir (default results/twominds/<ts>)"
-    ),
+    out: Optional[str] = OutOpt,
     display: str = DisplayOpt,
-    rerun: bool = RerunOpt,
-    rerun_model: Optional[List[str]] = RerunModelOpt,
-    no_store: bool = NoStoreOpt,
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="print plan + cost, no API calls"
-    ),
+    dry_run: bool = DryRunOpt,
 ):
-    """Phase 1: sample each model N times on the question roster (Inspect).
-
-    Generations are cached per model under results/twominds/models/ and reused
-    when the same questions + sampling config recur; --rerun / --rerun-model
-    force fresh ones, --no-store restores the old self-contained behavior.
-    """
-    if no_store:
-        _do_generate(
-            models,
-            groups,
-            ids,
-            all_questions,
-            families,
-            n,
-            temperature,
-            max_tokens,
-            judge,
-            out,
-            display,
-            dry_run,
-            roster=roster,
-            buckets=buckets,
-            model_concurrency=model_concurrency,
-            max_connections=max_connections,
-            will_judge=False,
-        )
-        return
-    run_dir, _specs, _gen_dirs, _cached = _setup_store_run(
+    """Phase 1: sample each model N times on the question roster (Inspect)."""
+    _do_generate(
         models,
         groups,
         ids,
-        all_questions,
-        families,
-        roster,
-        buckets,
         n=n,
         temperature=temperature,
         max_tokens=max_tokens,
         judge=judge,
         out=out,
         display=display,
+        dry_run=dry_run,
         model_concurrency=model_concurrency,
         max_connections=max_connections,
-        rerun=rerun,
-        rerun_models=rerun_model,
-        dry_run=dry_run,
         will_judge=False,
     )
-    if run_dir is not None:
-        typer.echo(f"Generation complete: {run_dir}")
 
 
 @app.command()
@@ -126,10 +182,6 @@ def run(
     models: str = ModelsOpt,
     groups: Optional[str] = GroupsOpt,
     ids: Optional[str] = IdsOpt,
-    families: Optional[str] = FamiliesOpt,
-    all_questions: bool = AllQOpt,
-    roster: Optional[str] = RosterOpt,
-    buckets: Optional[str] = BucketsOpt,
     n: int = NOpt,
     temperature: float = TempOpt,
     max_tokens: int = MaxTokOpt,
@@ -137,37 +189,13 @@ def run(
     max_connections: Optional[int] = MaxConnectionsOpt,
     judge: str = JudgeOpt,
     judge_reasoning: str = JudgeReasonOpt,
-    backends: List[str] = BackendsOpt,
-    threshold: float = ThreshOpt,
-    local_model: str = LocalModelOpt,
     concurrency: int = ConcurrencyOpt,
-    reps: int = RepsOpt,
-    no_consistency: bool = NoConsistencyOpt,
     judge_pipeline: bool = JudgePipelineOpt,
-    out: Optional[str] = typer.Option(None, "--out", "-o", help="run dir"),
+    out: Optional[str] = OutOpt,
     display: str = DisplayOpt,
-    no_judge: bool = typer.Option(False, "--no-judge", help="skip the LLM judge"),
-    rerun: bool = RerunOpt,
-    rerun_model: Optional[List[str]] = RerunModelOpt,
-    no_store: bool = NoStoreOpt,
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="print plan + cost, no API calls"
-    ),
+    dry_run: bool = DryRunOpt,
 ):
-    """All phases: generate -> judge (rep1..repN) -> consistency -> report.
-
-    Generations (and rep1 judge verdicts) are cached per model under
-    results/twominds/models/ and reused automatically when the same questions +
-    sampling config come around again — only missing models hit the API. Use
-    --rerun / --rerun-model to force fresh generations, --no-store for the old
-    fully-self-contained behavior.
-
-    --reps N runs a full robust pass (rep1 + rep2..repN + consistency) in one
-    command, so a robust run is a single invocation.
-    """
-    backends = _resolve_backends(backends)
-    if not backends and no_judge:
-        raise typer.BadParameter("-b none with --no-judge leaves nothing to analyze")
+    """All phases: generate -> judge -> scores + report."""
     # Fuse the judge into the generation eval (per-sample scorer): each question
     # is judged as its answers land, in the sweep's own display, and the judge
     # phase below harvests the verdicts from the logs instead of re-judging.
@@ -177,122 +205,34 @@ def run(
             "judge_reasoning": judge_reasoning,
             "max_connections": concurrency,
         }
-        if judge_pipeline and not no_judge
+        if judge_pipeline
         else None
     )
-    if no_store:
-        run_dir = _do_generate(
-            models,
-            groups,
-            ids,
-            all_questions,
-            families,
-            n,
-            temperature,
-            max_tokens,
-            judge,
-            out,
-            display,
-            dry_run,
-            roster=roster,
-            buckets=buckets,
-            model_concurrency=model_concurrency,
-            max_connections=max_connections,
-            backends=list(backends),
-            will_judge=not no_judge,
-            judge_reps=reps if not no_judge else 1,
-            judge_inline=judge_inline,
-        )
-        if run_dir is None:  # dry run
-            return
-        _judge_reps(
-            run_dir,
-            reps=reps,
-            consistency=not no_consistency,
-            backends=backends,
-            judge=judge,
-            judge_reasoning=judge_reasoning,
-            threshold=threshold,
-            local_model=local_model,
-            concurrency=concurrency,
-            run_judge=not no_judge,
-            build_report=True,
-        )
-        typer.echo(f"\nDone. Open {run_dir / 'report.html'}")
-        return
-
-    run_dir, specs, gen_dirs, cached_gens = _setup_store_run(
+    run_dir = _do_generate(
         models,
         groups,
         ids,
-        all_questions,
-        families,
-        roster,
-        buckets,
         n=n,
         temperature=temperature,
         max_tokens=max_tokens,
         judge=judge,
         out=out,
         display=display,
+        dry_run=dry_run,
         model_concurrency=model_concurrency,
         max_connections=max_connections,
-        rerun=rerun,
-        rerun_models=rerun_model,
-        dry_run=dry_run,
-        backends=list(backends),
-        will_judge=not no_judge,
-        judge_reps=reps if not no_judge else 1,
+        will_judge=True,
         judge_inline=judge_inline,
     )
     if run_dir is None:  # dry run
         return
-
-    # rep1: cached per-model judge fragments where fresh, judged now otherwise
-    # (fresh fragments of a fused generation harvest their in-log verdicts).
-    judge_key = store_mod.compute_judge_key(
-        judge_name=judge,
-        judge_reasoning=judge_reasoning,
-        threshold=threshold,
-        backends=list(backends),
-        local_model=local_model,
-        run_judge=not no_judge,
-    )
-    combined = store_mod.assemble_run(
+    typer.echo("\n=== judge ===")
+    analysis = analyze_mod.analyze(
         run_dir,
-        specs,
-        gen_dirs,
-        judge_key=judge_key,
-        backends=list(backends),
         judge_name=judge,
         judge_reasoning=judge_reasoning,
-        threshold=threshold,
-        local_model=local_model,
         concurrency=concurrency,
-        run_judge=not no_judge,
-        on_fragment=lambda name, status: typer.echo(
-            f"  [judge {'cached ✓' if status == 'cached' else '✔'}] {name}"
-        ),
-        # rep2..N judge the whole run and read run_dir/cache — seed it from the
-        # fragments' per-model caches so they don't re-embed everything.
-        preseed_cache=reps > 1,
-        cached_gens=set(cached_gens),
     )
-    _echo_judge_summary(combined, run_dir)
+    _echo_judge_summary(analysis, run_dir)
     typer.echo(f"  report -> {report_mod.build_report_from_run(run_dir)}")
-    if combined.get("cost"):
-        typer.echo(cost_mod.format_summary(combined["cost"]))
-    if reps > 1 and not no_judge:
-        rep_costs = _extra_judge_reps(
-            run_dir,
-            reps=reps,
-            consistency=not no_consistency,
-            backends=backends,
-            judge=judge,
-            judge_reasoning=judge_reasoning,
-            threshold=threshold,
-            local_model=local_model,
-            concurrency=concurrency,
-        )
-        _echo_cost_total([combined.get("cost") or {}] + rep_costs)
     typer.echo(f"\nDone. Open {run_dir / 'report.html'}")

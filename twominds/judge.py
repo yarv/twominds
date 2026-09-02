@@ -64,8 +64,9 @@ _RETRY_NOTE = (
     "with every response number from 1 to {n} appearing in exactly one group."
 )
 
-# Content hash of the judge prompt template — part of the store's judge_key, so
-# editing the prompt invalidates cached judge fragments.
+# Content hash of the judge prompt template — stamped on every verdict (see
+# ``judge_identity``), so editing the prompt invalidates verdicts harvested
+# from generation logs.
 PROMPT_HASH = hashlib.sha256(_JUDGE_INSTRUCTIONS.encode()).hexdigest()[:12]
 
 

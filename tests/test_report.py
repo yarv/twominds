@@ -1,4 +1,4 @@
-"""Test that the variance report renders to a single self-contained HTML file."""
+"""Test that the report renders to a single self-contained HTML file."""
 
 import re
 
@@ -7,9 +7,9 @@ from twominds import report as R
 
 def _external_urls(html: str) -> list[str]:
     """Any http(s) URL that isn't the (never-fetched) SVG XML namespace — i.e. a
-    genuine external asset/network reference. The inline-SVG charts legitimately
-    embed ``http://www.w3.org/2000/svg`` via ``createElementNS`` (same as the
-    repo's other client-rendered reports), which is not an external asset."""
+    genuine external asset/network reference. The inline-SVG chart legitimately
+    embeds ``http://www.w3.org/2000/svg`` via ``createElementNS``, which is not
+    an external asset."""
     return [
         u
         for u in re.findall(r'https?://[^\s"\'<>]+', html)
@@ -20,11 +20,8 @@ def _external_urls(html: str) -> list[str]:
 def _synthetic_analysis():
     return {
         "run_dir": "results/twominds/test",
-        "backends": ["local", "openai-3-small"],
-        "primary_backend": "local",
         "judge": "openrouter/anthropic/claude-sonnet-4.5",
         "judge_reasoning": "low",
-        "threshold": 0.15,
         "models": ["gpt-4.1", "toy-finetune"],
         "questions": {
             "identity_who": {
@@ -47,20 +44,7 @@ def _synthetic_analysis():
                     "parse_ok": True,
                 },
                 "judge_labels": [0, 0],
-                "clusters": {
-                    "local": {"labels": [0, 0], "n_clusters": 1},
-                    "openai-3-small": {"labels": [0, 1], "n_clusters": 2},
-                },
-                "agreement": {
-                    "local": {"ari": 1.0, "nmi": 1.0},
-                    "openai-3-small": {"ari": 0.0, "nmi": 0.0},
-                },
-                "metrics": {
-                    "n": 2,
-                    "refusal_rate": 0.0,
-                    "mean_pairwise_cosine_dist": 0.12,
-                    "n_judge_groups": 1,
-                },
+                "metrics": {"n": 2, "n_judge_groups": 1, "group_entropy": 0.0},
             }
         ],
     }
@@ -89,7 +73,6 @@ def test_report_has_enhanced_controls(tmp_path):
         'id="respSort"',
         'id="cardSort"',
         'id="minGroups"',
-        'id="minClusters"',
         'id="search"',
         'id="expandAll"',
         'id="collapseAll"',
@@ -137,6 +120,9 @@ def test_report_has_tabbed_layout(tmp_path):
         'id="setupBody"',
     ):
         assert mount in html, f"missing mount {mount}"
+    # the framing-families tab is gone with the feature
+    assert 'data-tab="families"' not in html
+    assert "families_report.html" not in html
 
 
 def test_report_carries_model_display(tmp_path):
@@ -198,19 +184,10 @@ def _analysis_with_categories():
                         "parse_ok": True,
                     },
                     "judge_labels": [0, mi],
-                    "clusters": {
-                        "local": {"labels": [0, 0], "n_clusters": 1},
-                        "openai-3-small": {"labels": [0, 1], "n_clusters": 2},
-                    },
-                    "agreement": {
-                        "local": {"ari": 1.0, "nmi": 1.0},
-                        "openai-3-small": {"ari": 0.0, "nmi": 0.0},
-                    },
                     "metrics": {
                         "n": 2,
                         "n_judge_groups": 1 + mi,
                         "group_entropy": 0.2 * (mi + 1) + 0.1 * gi,
-                        "mean_pairwise_cosine_dist": 0.1,
                     },
                 }
             )
@@ -229,12 +206,11 @@ def test_report_embeds_interactive_category_chart(tmp_path):
     assert "const CHART" in html and "initCategoryChart" in html
     # clicking a question bar focuses the cards on that question
     assert "focusQuestion" in html and 'id="qfocus"' in html
-    # the old static-PNG embed + lightbox are gone
+    # no static-PNG embed
     assert "data:image/png;base64," not in html
-    assert 'id="lightbox"' not in html and "wireLightbox" not in html
     # still self-contained (only the SVG namespace URI)
     assert _external_urls(html) == []
-    # and a paper-ready sibling figure is still dropped next to the report
+    # and a paper-ready sibling figure is dropped next to the report
     assert (tmp_path / "category_group_entropy_bars.png").exists()
 
 
@@ -245,11 +221,9 @@ def test_chart_data_single_run_schema():
     assert data["n_runs"] == 1
     assert set(data["models"]) == {"gpt-4.1", "toy-finetune"}
     assert set(data["groups"]) == {"identity", "values"}
-    # both judge and embedding metrics surfaced; only judge metrics flagged for bars
-    assert "group_entropy" in data["metrics"]
-    assert "mean_pairwise_cosine_dist" in data["metrics"]
+    assert data["metrics"] == ["group_entropy", "n_judge_groups"]
     assert data["judge_metrics"] == ["group_entropy", "n_judge_groups"]
-    # single pass => exactly one rep per metric per cell (=> no error bars)
+    # single pass => exactly one value per metric per cell
     for c in data["cells"]:
         for v in c["vals"].values():
             assert len(v) == 1
@@ -261,8 +235,8 @@ def test_chart_data_single_run_schema():
 
 def test_chart_aggregate_parity_with_static_png():
     """The interactive chart's aggregate-mode bar heights must equal the static
-    PNG's per-(category, model) means (the way the rank-shift tab parity-tests its
-    JS port). Here we replicate the JS aggregation in Python and compare."""
+    PNG's per-(category, model) means. Here we replicate the JS aggregation in
+    Python and compare."""
     from twominds import category_bars as cb
     from twominds import category_chart as cc
 
@@ -284,28 +258,6 @@ def test_chart_aggregate_parity_with_static_png():
         for model, want in means[cat].items():
             got = sum(agg[cat][model]) / len(agg[cat][model])
             assert abs(got - want) < 1e-9, (cat, model, got, want)
-
-
-def test_chart_data_multi_run_reps_and_std():
-    """K judge passes => judge metrics carry K reps (error bars); embedding metrics
-    stay single-valued (judge-invariant)."""
-    import copy
-
-    from twominds import category_chart as cc
-
-    a = _analysis_with_categories()
-    b = copy.deepcopy(a)
-    for r in b["results"]:  # perturb only the judge metric across the second pass
-        r["metrics"]["group_entropy"] = r["metrics"]["group_entropy"] + 0.4
-    data = cc.build_chart_data_multi({"rep1": a, "rep2": b})
-    assert data["n_runs"] == 2
-    cell = data["cells"][0]
-    assert len(cell["vals"]["group_entropy"]) == 2  # judge metric: per-pass reps
-    assert len(cell["vals"]["mean_pairwise_cosine_dist"]) == 1  # embedding: invariant
-    # the two passes differ by 0.4 on every cell => SD across the pair is 0.2
-    import statistics as st
-
-    assert abs(st.pstdev(cell["vals"]["group_entropy"]) - 0.2) < 1e-9
 
 
 def test_overall_column_excludes_and_macro_averages():
@@ -344,180 +296,11 @@ def test_category_bars_aggregate_and_default_metric():
     assert cb.short_labels(models)["gpt-4.1"] == "gpt-4.1"
 
 
-# --- cross-variant framing families: excluded from the within-prompt views,
-#     surfaced via a link to the dedicated families report ----------------------
-
-
-def _analysis_with_family():
-    """Categories fixture + one cross-variant framing-family question (with the
-    matching `families` record). Within-prompt resampling is the wrong metric for
-    family variants, so they must be absent from the chart + cards, and the report
-    must link the dedicated families sub-report instead."""
-    base = _analysis_with_categories()
-    base["questions"]["poem_v1"] = {
-        "prompt": "Rate this poem.",
-        "group": "sycophancy",
-        "bucket": "prompt_robustness",
-        "family": "poem_rating",
-        "variant": "mine",
-    }
-    for model in base["models"]:
-        base["results"].append(
-            {
-                "model": model,
-                "question_id": "poem_v1",
-                "group": "sycophancy",
-                "responses": ["8/10", "9/10"],
-                "judge": {
-                    "contradiction": False,
-                    "groups": [[0, 1]],
-                    "n_groups": 1,
-                    "rationale": "",
-                    "flags": [],
-                    "parse_ok": True,
-                },
-                "judge_labels": [0, 0],
-                "clusters": {
-                    "local": {"labels": [0, 0], "n_clusters": 1},
-                    "openai-3-small": {"labels": [0, 0], "n_clusters": 1},
-                },
-                "agreement": {
-                    "local": {"ari": 1.0, "nmi": 1.0},
-                    "openai-3-small": {"ari": 1.0, "nmi": 1.0},
-                },
-                "metrics": {
-                    "n": 2,
-                    "n_judge_groups": 1,
-                    "group_entropy": 0.0,
-                    "mean_pairwise_cosine_dist": 0.05,
-                },
-            }
-        )
-    base["families"] = [
-        {
-            "model": m,
-            "family": "poem_rating",
-            "title": "Poem rating",
-            "judge": (
-                {
-                    "ari": 0.8,
-                    "mi": 0.69,
-                    "h_cond": 0.0,
-                    "mi_p": 0.001,
-                    "n_groups": 2,
-                    "parse_ok": True,
-                }
-                if m == "toy-finetune"
-                else {
-                    "ari": 0.1,
-                    "mi": 0.02,
-                    "h_cond": 0.31,
-                    "mi_p": 0.6,
-                    "n_groups": 2,
-                    "parse_ok": True,
-                }
-            ),
-        }
-        for m in base["models"]
-    ]
-    return base
-
-
-def test_chart_excludes_family_questions():
-    from twominds import category_chart as cc
-
-    data = cc.build_chart_data(_analysis_with_family())
-    qids = {c["qid"] for c in data["cells"]}
-    assert "poem_v1" not in qids  # the framing-family variant contributes no bar
-    # its group (only present via the family question) drops out entirely
-    assert set(data["groups"]) == {"identity", "values"}
-
-
-def test_chart_multi_excludes_family_questions():
-    from twominds import category_chart as cc
-
-    a = _analysis_with_family()
-    data = cc.build_chart_data_multi({"rep1": a, "rep2": a})
-    assert all(c["qid"] != "poem_v1" for c in data["cells"])
-
-
-def test_report_families_tab_when_present(tmp_path):
-    out = R.build_report(_analysis_with_family(), tmp_path / "report.html")
-    html = out.read_text()
-    # a Families tab (button + pane) with the per-(family, model) summary and a
-    # prominent link to the sibling interactive report (max judge ARI shown)
-    assert 'data-tab="families"' in html
-    assert 'id="tab-families"' in html
-    assert 'href="families_report.html"' in html
-    assert "framing famil" in html
-    assert "0.69" in html  # strongest directed I(G;V) across families
-    assert "position tracks the framing (directed)" in html
-    assert "positions vary, not with the framing (undirected)" in html
-    # main-card filter drops family bundles client-side
-    assert ".family) return false" in html
-    # a relative sibling link keeps the report self-contained (no external URL)
-    assert _external_urls(html) == []
-
-
-def test_report_has_no_families_tab_without_families(tmp_path):
-    out = R.build_report(_analysis_with_categories(), tmp_path / "report.html")
-    html = out.read_text()
-    assert 'data-tab="families"' not in html
-    assert 'id="tab-families"' not in html
-    assert 'href="families_report.html"' not in html
-    assert "framing famil" not in html
-
-
-# --- bucket organization (tier_1 / tier_2 / ...) ------------------------------
-
-
-def _analysis_with_buckets():
-    """Categories fixture with each question tagged to a bucket."""
-    base = _analysis_with_categories()
-    base["questions"]["identity_q"]["bucket"] = "tier_1"
-    base["questions"]["values_q"]["bucket"] = "tier_2"
-    return base
-
-
-def test_chart_data_carries_buckets():
-    from twominds import category_chart as cc
-
-    data = cc.build_chart_data(_analysis_with_buckets())
-    assert set(data["buckets"]) == {"tier_1", "tier_2"}
-    assert all("bucket" in c for c in data["cells"])
-    # the chart JS gains the by-bucket aggregate view + bucket chips
-    assert "by bucket" in cc.CHART_JS and "aggBy" in cc.CHART_JS
-
-
-def test_report_has_bucket_filter(tmp_path):
-    out = R.build_report(_analysis_with_buckets(), tmp_path / "report.html")
-    html = out.read_text()
-    # bucket filter dropdown + state default + passes() check are all wired
-    assert 'id="bucket"' in html
-    assert "bucket:'__all__'" in html
-    assert "STATE.bucket" in html
-
-
-def _judge_only_analysis():
-    """A -b none run: no backends, no clusters/agreement, judge-only metrics."""
-    a = _synthetic_analysis()
-    a["backends"] = []
-    a["primary_backend"] = None
-    for r in a["results"]:
-        r["clusters"] = {}
-        r["agreement"] = {}
-        r["metrics"] = {
-            k: v
-            for k, v in r["metrics"].items()
-            if k not in ("n_clusters", "cluster_entropy", "mean_pairwise_cosine_dist")
-        }
-    return a
-
-
 def test_report_renders_judge_only(tmp_path):
+    # the analysis carries no embedding backends; the page's embedding-derived
+    # affordances key off this flag and stay hidden
     out = tmp_path / "report.html"
-    R.build_report(_judge_only_analysis(), out)
+    R.build_report(_synthetic_analysis(), out)
     html = out.read_text()
-    assert "none (judge-only)" in html  # header says embeddings are off
     assert "const EMB = (DATA.backends || []).length > 0;" in html
     assert not _external_urls(html)

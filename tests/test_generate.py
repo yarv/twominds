@@ -9,7 +9,6 @@ offline ``mockllm/model`` run (no network, no API keys).
 """
 
 from twominds import analyze as A
-from twominds import cost as C
 from twominds import generate as G
 from twominds.models import ModelSpec
 from twominds.questions import Question
@@ -59,8 +58,7 @@ def test_run_generation_roundtrips_through_load_responses(tmp_path):
 
 
 def test_load_responses_falls_back_to_analysis_json(tmp_path):
-    """A run whose logs are gone (store pruned the generations the run's logs/
-    symlinks point at) can still be re-judged: the responses live verbatim in
+    """A run whose logs are gone can still be re-judged: the responses live verbatim in
     analysis.json."""
     import json
 
@@ -108,15 +106,3 @@ def test_slash_in_model_name_does_not_collapse_models(tmp_path):
     for label in ("ours_alpha", "ours_beta"):
         assert set(responses[label]) == {"q1", "q2"}
         assert all(len(responses[label][qid]) == 2 for qid in ("q1", "q2"))
-
-
-def test_generation_usage_counts_each_model_once(tmp_path):
-    """The .json sibling must not double-count tokens: list_eval_logs returns only
-    the .eval, so generation_usage sees exactly one log per model dir."""
-    specs = [ModelSpec(name="mock-a", inspect_model="mockllm/model")]
-    run_dir = tmp_path / "run"
-    G.run_generation(specs, _QS, n=2, run_dir=run_dir, display="none")
-
-    usage = C.generation_usage(run_dir)
-    assert set(usage) == {"mock-a"}
-    assert usage["mock-a"]["in_tok"] >= 0 and usage["mock-a"]["out_tok"] >= 0

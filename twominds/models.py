@@ -409,8 +409,7 @@ def resolve_model(name: str) -> ModelSpec:
 def next_name(ref: str, current: str) -> Optional[str]:
     """The next-longer short name for ``ref`` after ``current``, or None when
     the reference has no more path segments to add. Used to resolve short-name
-    collisions — within one batch (:func:`resolve_models`) and against the
-    per-model store across invocations (the store identity guard)."""
+    collisions within one batch (:func:`resolve_models`)."""
     for k in range(2, ref.count("/") + 2):
         cand = _short_name(ref, segments=k)
         if cand != current:
@@ -444,14 +443,3 @@ def resolve_models(names: list[str]) -> list[ModelSpec]:
     # Ran out of segments to add (e.g. same full ref under different aliases).
     dupes = sorted({s.name for s in specs if [t.name for t in specs].count(s.name) > 1})
     raise ValueError(f"could not disambiguate model names: {', '.join(dupes)}")
-
-
-def cohort_of(name: str) -> str:
-    """Classify a roster model as ``"finetuned"`` (user-registered ``ours/<x>``
-    fine-tunes) or ``"base"`` (base / frontier models). Used by the families report to split the
-    grouped-bar chart into fine-tuned-organism vs base/frontier cohorts. Unknown
-    names default to ``"base"``.
-    """
-    key = _ALIASES.get(name, name)
-    ref = _ROSTER_REFS.get(key, (None,))[0]
-    return "finetuned" if (ref or "").startswith("ours/") else "base"

@@ -1,15 +1,16 @@
-"""Response-variance / coherence experiment — canonical CLI entry point.
+"""Within-model coherence evals — canonical CLI entry point.
 
 Ask each model a fixed set of free-form questions N times each (temperature
-1.0) and study the variance across re-samples with a cross-sample LLM judge +
-embedding clustering.
+1.0) and score the answers with a cross-sample LLM judge that partitions them
+into positions.
 
-Both phases are Inspect ``eval``s (generation = one eval over all models; the judge
-= one eval over the bundles), each log written in both ``.eval`` + ``.json`` form.
-Phases leave artefacts on disk between each, so they are independently re-runnable:
+Both phases are Inspect ``eval``s (generation = one eval over all models; the
+judge = one eval over the bundles), each log written in both ``.eval`` + ``.json``
+form. Phases leave artefacts on disk between each, so they are independently
+re-runnable:
 
     generate  ->  <run>/logs/<model>/<model>.{eval,json}, questions.json, run_config.json
-    analyze   ->  <run>/judge_logs/{responses,families}.{eval,json}, analysis.json
+    analyze   ->  <run>/judge_logs/responses.{eval,json}, analysis.json
     report    ->  <run>/report.html
 
 Examples
@@ -20,8 +21,8 @@ Examples
     # tiny smoke run end to end
     uv run twominds run --groups values --models gpt-4.1 --n 3
 
-    # full default sweep (3 models, 96 questions incl. framing families, N=20)
-    uv run twominds run --n 20
+    # the full roster (175 questions, N=20) on one model
+    uv run twominds run --models gpt-4.1 --n 20
 """
 
 from __future__ import annotations
@@ -43,8 +44,8 @@ app = typer.Typer(
 def _raise_fd_limit() -> None:
     """Lift the soft open-files limit to the hard limit (POSIX; no-op elsewhere).
 
-    A full sweep holds eval logs plus provider and judge sockets across dozens
-    of concurrent model tasks; the common interactive-shell soft limit (1024)
+    A full sweep holds eval logs plus provider and judge sockets across many
+    concurrent model tasks; the common interactive-shell soft limit (1024)
     EMFILEs ("Too many open files") late in a big run. Raising soft to hard
     needs no privileges.
     """

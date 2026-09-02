@@ -5,8 +5,7 @@ convention), organised into four tabs so the headline lands before the detail:
 
 The report speaks plain language: "answer set" (one model's N answers to one
 question, a.k.a. a bundle in the code), "distinct positions" (judge groups),
-"answer spread" (group entropy), "cross-check agreement" (judge-vs-embedding
-ARI), "wording variety" (mean pairwise cosine distance). Jargon lives only in
+"answer spread" (group entropy). Jargon lives only in
 hover tooltips and the Method tab's glossary, sourced from the single JS
 ``GLOSSARY`` map.
 
@@ -21,21 +20,19 @@ hover tooltips and the Method tab's glossary, sourced from the single JS
   cards stay collapsed — flags can be plentiful judge side-notes). Each card
   header carries a composition strip (a tiny stacked bar of the judge's
   position sizes); positions show the judge's 1-2 word group names where the
-  analysis has them. Controls: model / category / bucket / embedding-backend
-  filters, answer + card sorts, min-positions + min-clusters thresholds,
-  free-text search, toggles, expand/collapse all, and a
+  analysis has them. Controls: model / category
+  filters, answer + card sorts, a min-positions threshold, free-text search, toggles, expand/collapse all, and a
   dashboard summarising the filtered set. Flags may point at specific
   answers (⚑ markers on the flagged rows).
 * **Method & setup** (id ``setup``) — what ran, how answers were collected,
-  how consistency was scored, a glossary, cost, the question roster, and
+  how consistency was scored, a glossary, the question roster, and
   provenance.
 
 Filter/sort state (including the active tab) persists in the URL hash + a per-run
 localStorage key (so independent reports never share state), with a "reset
 filters" button and an auto-reset-to-defaults guard so a transferred report never
 opens blank. All data needed is already in ``analysis.json`` (per-response
-``judge_labels`` / cluster labels, ``agreement`` ARI, ``metrics``, and — for runs
-generated after the manifest gained it — ``model_display`` / ``config``).
+``judge_labels``, ``metrics``, ``model_display`` / ``config``).
 """
 
 from __future__ import annotations
@@ -47,10 +44,6 @@ from twominds import category_chart
 from twominds.report_ui import (
     BASE_CSS,
     BASE_JS,
-    FAM_ALPHA,
-    FAM_VERDICT_DIRECTED,
-    fam_verdict,
-    fmt_p,
     html_document,
     json_blob,
 )
@@ -617,12 +610,11 @@ function renderSetup(){
   const qids = Object.keys(DATA.questions||{}).sort();
   if (qids.length){
     h += '<h2>Questions ('+qids.length+')</h2><div class="tblwrap"><table class="tbl">'
-      + '<tr><th>id</th><th>category</th><th>bucket</th><th>family</th><th>prompt</th></tr>';
+      + '<tr><th>id</th><th>category</th><th>prompt</th></tr>';
     for (const qid of qids){
       const q = DATA.questions[qid]||{};
       const p = q.prompt||'';
       h += '<tr><td class="mono">'+esc(qid)+'</td><td>'+esc(q.group||'')+'</td>'
-        + '<td>'+esc(q.bucket||'')+'</td><td>'+esc(q.family||'')+'</td>'
         + '<td title="'+esc(p)+'">'+esc(p.length>110?p.slice(0,109)+'…':p)+'</td></tr>';
     }
     h += '</table></div>';
@@ -711,9 +703,8 @@ function focusQuestion(info){
 
 function init(){
   STATE = loadState();
-  // family-tagged bundles never render here (their signal is cross-variant —
-  // see the Families tab), so don't offer groups/buckets that would be empty
-  const shown = DATA.results.filter(r=>!(DATA.questions[r.question_id]||{}).family);
+  // only offer groups that actually have answer sets
+  const shown = DATA.results;
   const groups = [...new Set(shown.map(r=>r.group))].filter(Boolean);
   const buckets = [...new Set(shown.map(r=>(DATA.questions[r.question_id]||{}).bucket))].filter(Boolean).sort();
   opts('#model', DATA.models.slice(), true);
@@ -780,80 +771,6 @@ def _write_sibling_png(analysis: dict, out_path: Path) -> None:
         pass
 
 
-def _families_tab_html(analysis: dict) -> tuple[str, str]:
-    """(nav button, tab section) surfacing the cross-variant framing families.
-
-    The framing-family signal lives in ``families_report.html`` (built into the
-    same dir whenever the analysis has families); the main within-prompt report
-    excludes those questions from its chart/cards, so give the signal its own
-    tab — a per-(family, model) summary plus a prominent link to the full
-    interactive report. ("", "") when there are no families.
-    """
-    import html as html_mod
-
-    fams = analysis.get("families") or []
-    if not fams:
-        return "", ""
-    n_fams = len({r.get("family") for r in fams})
-
-    def _scored(rec: dict) -> dict:
-        judge = rec.get("judge") or {}
-        return judge if judge.get("parse_ok") is not False else {}
-
-    mis = [_scored(r).get("mi") for r in fams if _scored(r).get("mi") is not None]
-    top = f"{max(mis):.2f}" if mis else "—"
-    n_directed = sum(1 for r in fams if fam_verdict(_scored(r)) == FAM_VERDICT_DIRECTED)
-    num = lambda x: "—" if x is None else f"{x:.2f}"  # noqa: E731
-    rows = []
-    for rec in sorted(
-        fams, key=lambda r: (r.get("family") or "", r.get("model") or "")
-    ):
-        judge = _scored(rec)
-        scalar = rec.get("scalar") or {}
-        swing = scalar.get("swing")
-        swing_cell = "—" if swing is None else f"{swing:.2f}"
-        if swing is not None and scalar.get("swing_p") is not None:
-            swing_cell += f" <small>({fmt_p(scalar['swing_p'])})</small>"
-        mi_cell = num(judge.get("mi"))
-        if judge.get("mi") is not None and judge.get("mi_p") is not None:
-            mi_cell += f" <small>({fmt_p(judge['mi_p'])})</small>"
-        cells = [
-            html_mod.escape(str(rec.get("title") or rec.get("family") or "?")),
-            html_mod.escape(str(rec.get("model") or "?")),
-            mi_cell,
-            num(judge.get("h_cond")),
-            swing_cell,
-            fam_verdict(judge),
-        ]
-        rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
-    button = '<button data-tab="families">Families</button>'
-    section = f"""
-<section class="tab" id="tab-families">
-  <div class="pane">
-    <h2>Framing families <span class="hint">— the same question asked under
-    answer-irrelevant framings: does the answer follow the framing?</span></h2>
-    <p class="note">{n_fams} framing famil{"y" if n_fams == 1 else "ies"};
-    {n_directed} model×family bundle{"" if n_directed == 1 else "s"} framing-driven
-    at α={FAM_ALPHA}. The pooled judge's answer spread splits exactly into
-    <b>directed</b> I(G;V), the part the framing explains (0&nbsp;= the framing
-    tells you nothing about the answer; strongest here: {top}), and
-    <b>undirected</b> H(G|V), the part it does not (the model scatters within a
-    framing too) — both in nats like the per-question answer spread. The read
-    applies a permutation test to I(G;V). Swing = spread of the per-framing
-    committed answer, with its own permutation p. These framing families are
-    kept out of the within-prompt numbers in the other tabs.</p>
-    <table class="famtab">
-      <thead><tr><th>family</th><th>model</th><th>directed I(G;V)</th>
-      <th>undirected H(G|V)</th><th>swing</th><th>read</th></tr></thead>
-      <tbody>{"".join(rows)}</tbody>
-    </table>
-    <p><a class="fambtn" href="families_report.html">Open the full interactive
-    families report — per-variant answers, contingency tables →</a></p>
-  </div>
-</section>"""
-    return button, section
-
-
 def build_report(analysis: dict, out_path: Path) -> Path:
     out_path = Path(out_path)
     data_json = json_blob(analysis)
@@ -864,19 +781,17 @@ def build_report(analysis: dict, out_path: Path) -> Path:
     n_answers = (analysis.get("config") or {}).get("n")
     per_q = f" × {n_answers} answers each" if n_answers else ""
     judge = analysis.get("judge") or "(none)"
-    backends = ", ".join(analysis.get("backends", [])) or "none (judge-only)"
     _write_sibling_png(analysis, out_path)
     chart_data = json_blob(category_chart.build_chart_data(analysis))
     chart_section = category_chart.chart_section_html("cchart")
-    fam_button, fam_section = _families_tab_html(analysis)
     body = f"""<header>
   <h1>How consistently do these models answer?</h1>
   <div class="dash" style="margin-top:2px">{n_models} models · {n_questions} questions{per_q} ·
-    judge: {judge} · embeddings: {backends}</div>
+    judge: {judge}</div>
   <nav class="tabs">
     <button data-tab="overview">Overview</button>
     <button data-tab="models">Models</button>
-    <button data-tab="explorer">Answers</button>{fam_button}
+    <button data-tab="explorer">Answers</button>
     <button data-tab="setup">Method &amp; setup</button>
   </nav>
 </header>
@@ -938,8 +853,6 @@ def build_report(analysis: dict, out_path: Path) -> Path:
   <div id="qfocus" class="qfocus" style="display:none"></div>
   <div id="cards"></div>
 </section>
-
-{fam_section}
 
 <section class="tab" id="tab-setup">
   <div class="pane" id="setupBody"></div>

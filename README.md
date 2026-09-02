@@ -8,27 +8,24 @@
 N times at temperature 1.0 and measures whether the answers take the same
 position — within-model coherence evals for LLMs.
 
+This repository is the core pipeline behind the paper's evaluation: run a
+model on the 175-question roster, have the cross-sample judge partition each
+question's N answers into positions, and read off the scores and flags.
+
 ![Answer spread by question category, one bar per model](docs/example_category_bars.png)
 
-Bar height is **answer spread**: how evenly a model's N answers to a question
-split into genuinely different positions, averaged per category. In the sweep
-above, `gpt-4.1` answered fully consistently on 88% of questions (with 6
-outright self-contradictions); `gpt-5.2` on 98%.
+## The method in one paragraph
 
-## What it measures
-
-- **Within-prompt coherence** — a cross-sample LLM judge reads all N answers
-  to one question at once, partitions them into positions, and flags
-  self-contradictions; embedding clustering cross-checks the judge.
-- **Framing invariance (sycophancy)** — cross-variant *families* ask one
-  invariant question under K answer-irrelevant framings and measure whether
-  the answer follows the framing.
-- **Judge accuracy** — the `stress` command scores the judge against synthetic
-  bundles with a known ground-truth partition.
-
-How the pieces work internally — pipeline, caching store, judge design,
-report machinery — lives in the
-[architecture & contributor guide](twominds/README.md).
+Each of the 175 questions is short, clear, and either high-stakes or
+clear-cut, so that neither confusion nor indifference explains varied
+answers. A model is sampled N=20 times per question. A judge LLM reads the
+question and all N answers side by side and partitions them into groups of
+mutually compatible positions, naming each group and flagging anything
+noteworthy. The **answer spread** of a question is the Shannon entropy of
+that partition, H = −Σ p_k log p_k (nats): 0 when every answer takes one
+position, log N when every answer is its own position. A model's score is its
+mean H over the roster, reported alongside e^H (the effective number of
+positions) and the share of questions held at a single position.
 
 ## Quickstart
 
@@ -36,8 +33,8 @@ Needs [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install
 
 ```bash
 git clone <repository-url> twominds && cd twominds
-uv sync                # lean install: no torch
-uv run pytest -q       # full test suite, no keys, ~20 s
+uv sync                # no API keys needed for this
+uv run pytest -q       # full test suite, offline
 uv run twominds --help
 ```
 
@@ -50,181 +47,118 @@ cp .env.example .env   # then fill in the keys
 uv run twominds run --dry-run --groups values --models gpt-4.1 --n 3
 ```
 
-Two keys cover the defaults: `OPENAI_API_KEY` (generation + the default
-embedding backend, priced in cents) and `OPENROUTER_API_KEY` (the judge, and
-every non-OpenAI model below).
+Two keys cover the defaults: `OPENAI_API_KEY` (generation for OpenAI models)
+and `OPENROUTER_API_KEY` (the judge, and every non-OpenAI roster model).
 
-## Evaluating your models
+## Running your model
 
-### Your own fine-tunes
+```bash
+# a ~$0.30 smoke run: one group, one model, 3 samples per question
+uv run twominds run --groups values --models gpt-4.1 --n 3
 
-- **OpenAI fine-tune IDs** work as-is:
-  `--models ft:gpt-4.1-2025-04-14:your-org:your-model:AbCd1234`.
-- **Aliased**: copy `model_jsons.keys.example` to `model_jsons.keys`
-  (gitignored), map `short-name` → full ID, then `--models ours/short-name`.
-  The families report groups `ours/` models into their own cohort.
-- **Self-hosted / OpenAI-compatible endpoints** (vLLM, llama-server, Together,
+# the paper's setting: the full roster, N=20
+uv run twominds run --models gpt-4.1 --n 20
+```
+
+`--models` takes a comma-separated list, mixing freely:
+
+- **roster names** (`gpt-4.1`, `gpt-5.4`, `sonnet-5`, `llama-4-scout`, …; the
+  full list with aliases is in `twominds/models.py`);
+- **OpenAI fine-tune IDs** as-is:
+  `--models ft:gpt-4.1-2025-04-14:your-org:your-model:AbCd1234`;
+- **aliased fine-tunes**: copy `model_jsons.keys.example` to `model_jsons.keys`
+  (gitignored), map `short-name` → full ID, then `--models ours/short-name`;
+- **self-hosted / OpenAI-compatible endpoints** (vLLM, llama-server, Together,
   Groq, …) via `openai-api/<service>/<model>`; the uppercased service name
-  picks the env vars:
+  picks the env vars `<SERVICE>_BASE_URL` and `<SERVICE>_API_KEY`;
+- any other Inspect model string (`openrouter/<vendor>/<model>`,
+  `anthropic/...`, `vllm/...`, `ollama/...`).
 
-```bash
-export MYLLM_BASE_URL=http://localhost:8000/v1
-export MYLLM_API_KEY=none          # must be set, even if the server ignores it
-uv run twominds run --models openai-api/myllm/my-model --n 20
-```
-
-### Common API models
-
-`--models` takes a comma-separated list of roster names, mixed freely with the
-forms above. Defaults: `gpt-4.1`, `gpt-5.2`, `gpt-5.2-thinking`.
-
-| provider | roster names | needs |
-|---|---|---|
-| OpenAI | `gpt-4o`/`-mini`, `gpt-4.1`/`-mini`/`-nano`, `gpt-5`, `gpt-5.2`, `gpt-5.4`/`-mini`/`-nano`, `o3-mini`, `o4-mini` | `OPENAI_API_KEY` |
-| Anthropic | `claude-opus-5` (`opus-5`), `claude-sonnet-5` (`sonnet-5`), `claude-haiku-4.5` (`haiku-4.5`), `claude-opus-4.8` | `OPENROUTER_API_KEY` |
-| Google | `gemini-3.1-pro`, `gemini-3.6-flash` | `OPENROUTER_API_KEY` |
-| xAI | `grok-4.5` | `OPENROUTER_API_KEY` |
-| open-weight | `llama-4-maverick`, `llama-4-scout`, `llama-3.3-70b`, `deepseek-v4-flash`, `qwen3.7-plus`, `kimi-k3`, `glm-5.2`, `mistral-large-2512` | `OPENROUTER_API_KEY` |
-| open-weight size ladder | `qwen3.5-9b`, `qwen3.5-27b`, `qwen3.5-35b-a3b` (`qwen3.5-35b`), `qwen3.5-122b-a10b` (`qwen3.5-122b`), `qwen3.5-397b-a17b` (`qwen3.5-397b`) — one family at five sizes, thinking off; `-thinking` rungs at low effort | `OPENROUTER_API_KEY` |
-
-Reasoning-capable models come in pairs: the plain name runs *without*
+Reasoning-capable roster models come in pairs: the plain name runs *without*
 thinking, the `-thinking` suffix runs at low reasoning effort (run those with
-`--max-tokens 8192` so thinking and answer both fit). Gemini and Grok can't
-disable thinking, so they ship as single low-effort thinking rungs. A mixed
-example:
+`--max-tokens 8192` so thinking and answer both fit). The judge defaults to
+`openrouter/anthropic/claude-opus-4.8` at low reasoning effort — override with
+`--judge` and `--judge-reasoning`, e.g. `--judge anthropic/claude-opus-4.8`
+with `ANTHROPIC_API_KEY` to skip OpenRouter.
 
-```bash
-uv run twominds run --models ours/my-finetune,gpt-4.1,sonnet-5,llama-4-scout --n 20
-```
+## What you get back
 
-Anything else passes straight through as an Inspect model string
-(`openrouter/<vendor>/<model>`, `anthropic/...`, `vllm/...`, `ollama/...`);
-non-roster models are labeled by the last segment of their id. The judge
-defaults to `openrouter/anthropic/claude-opus-4.8` — override with `--judge`,
-e.g. `--judge anthropic/claude-opus-4.8` with `ANTHROPIC_API_KEY` to skip
-OpenRouter entirely.
+Every run writes a self-describing directory, `results/twominds/<timestamp>/`:
+
+| file | contents |
+|---|---|
+| `analysis.json` | per (model, question): the N responses, the judge's groups, group names, rationale and flags, and `metrics.group_entropy` (H); plus `scores`: per-model mean H, e^H, single-position share, flagged count |
+| `report.html` | one self-contained page: per-category chart, per-model table, and every question's answers with the judge's positions and flags |
+| `category_group_entropy_bars.png` | the static chart shown above |
+| `logs/`, `judge_logs/` | the raw Inspect logs of every generation and judge call |
+| `questions.json`, `run_config.json` | exactly what was asked, of which models, with what settings |
+
+`run` and `analyze` also print the per-model scores at the end.
 
 ## The commands
 
 | command | what it does |
 |---|---|
-| `run` | all phases: generate → judge (rep1..repN) → consistency → report |
+| `run` | all phases: generate → judge → scores + report |
 | `generate` | phase 1 only: sample each model N times over the roster |
-| `analyze` | phase 2 only: cross-sample judge + embedding clustering |
-| `report` | phase 3 only: build the self-contained HTML viewer |
-| `consistency` | aggregate judge-stability stats across repeat judge runs |
-| `merge` | combine several runs over the same question bank into one report |
-| `stress` | score the judge against synthetic ground-truth bundles |
-| `budget` | show OpenRouter spend / limit / remaining |
+| `analyze` | phase 2 only: cross-sample judge → `analysis.json` (judge a `generate`-only run, or re-judge one) |
+| `report` | phase 3 only: build the HTML viewer from `analysis.json` |
 
-```bash
-# a ~$0.30 smoke run, end to end
-uv run twominds run --groups values --models gpt-4.1 --n 3
+`--groups values,...` and `--ids <id,...>` narrow the roster; a bare run
+selects all 175 questions. By default the judge runs inline as each
+question's answers land (`--no-judge-pipeline` judges after generation
+instead). Three knobs control parallelism: `--model-concurrency` (models at
+once, default 3), `--max-connections` (requests per model), and
+`--judge-concurrency` (judge calls, default 16); mind your provider rate
+limits.
 
-# the full default sweep: 3 default models × 250 questions × N=20, ~$72 (est.)
-uv run twominds run --n 20
+## The roster
+
+175 questions in six groups under `twominds/questions/`, one YAML file per
+group: `values` (30), `introspection` (26), `situational_awareness` (27),
+`high_stakes` (35), `ai_safety` (30), `sycophancy` (27). Per-question
+provenance is a `#` comment next to the question, and
+`twominds/questions/SOURCES.md` maps each group to the literature it draws
+on. To add questions, add entries to a group file, or a new file with its own
+`group:`.
+
+## The judge
+
+The judge prompt lives in `twominds/judge.py`. It receives the question and
+the N numbered responses in one call and returns JSON: `groups` (a partition
+of 1..N), `group_names`, `contradiction`, `rationale`, and `flags`. Only the
+partition feeds the metrics; the flags surface candidate cases for manual
+review. Every verdict is stamped with the judge model, reasoning effort, and
+prompt hash, so `analyze` re-judges anything produced under a different
+configuration.
+
+## Layout
+
 ```
-
-The phases leave artifacts on disk between them, so each is independently
-re-runnable — useful to re-judge or re-render without regenerating:
-
-```bash
-uv run twominds generate -o results/twominds/run1 --n 20
-uv run twominds analyze  -r results/twominds/run1
-uv run twominds report   -r results/twominds/run1
+twominds/
+  questions/        the roster (one YAML per group) + SOURCES.md
+  questions.py      roster loading and selection
+  models.py         model roster, aliases, fine-tune resolution
+  generate.py       phase 1: the Inspect generation eval (+ inline judge scorer)
+  judge.py          the cross-sample judge prompt, parser, and judge eval
+  analyze.py        phase 2: judge verdicts -> answer spread -> analysis.json
+  metrics.py        entropy and the per-model scores
+  plan.py           --dry-run planning and rough cost estimates
+  report.py, report_ui.py, category_chart.py, category_bars.py
+                    the HTML report and its charts
+  cli/              the typer commands
+tests/              offline unit tests (no keys, no network)
 ```
-
-## Choosing questions
-
-Questions live in three **buckets**: `tier_1` (175 in-house coherence probes
-across six groups: values, introspection, situational_awareness, ai_safety,
-high_stakes, sycophancy) and `prompt_robustness` (75 questions forming the
-cross-variant framing families) are in the default sweep; `tier_2` (17
-answer-first / alternate-framing variants of tier_1 probes) is opt-in.
-
-Selection flags, combinable and all shown exactly by `--dry-run`:
-`--buckets tier_1,...` (whole buckets; `--all-questions` selects all three),
-`--groups values,...` (a semantic category across buckets), `--ids <id,...>`,
-`--families <id,...>` (every variant of a framing family), and
-`--roster <name>` (a frozen id-list pinned in
-`twominds/questions/_rosters.yaml`).
-
-## Reading the results
-
-Every run dir gets **`report.html`** — one self-contained file, no server: an
-interactive per-category chart (aggregate, per-bucket, or per-question view;
-clicking a question bar focuses its responses) plus every question's N answers
-with the judge's position groups, flags, and embedding clusters. A static PNG
-of the chart is written alongside for papers.
-
-Runs with framing families also get **`families_report.html`** (one card per
-model × family: the blind judge's variant × position contingency with its
-answer spread split into a
-directed part the framing explains and an undirected part it does not, and a
-permutation-test verdict); repeat-judge runs add **`consistency_report.html`**
-and **`multi_report.html`** (judge-pass viewer with ±1 SD error bars).
-
-## Speed & cost
-
-Generations, embeddings, and first-pass judge verdicts are **cached per
-model** under `results/twominds/models/`, keyed by question content and
-sampling config: re-running the same command costs nothing, adding a model
-pays only for the new model, editing a question invalidates exactly the
-affected bundles. `--rerun` / `--rerun-model <name>` force fresh generations;
-`--no-store` bypasses the cache.
-
-Three knobs control parallelism:
-
-- `--model-concurrency` (default 3) — how many models generate at once.
-- `--max-connections` — concurrent requests per model (default: the
-  provider's default, ~10 for OpenAI). Raise on high-tier keys.
-- `--judge-concurrency` (default 16) — concurrent judge calls.
-
-Effective API concurrency ≈ model-concurrency × max-connections — mind your
-provider rate limits (429s are backed off adaptively). `--dry-run` prices any
-command before you run it; `twominds budget` shows OpenRouter spend.
-
-## Trusting the judge
-
-Every headline number above the generation layer is one LLM judge's opinion.
-Two tools keep that honest:
-
-```bash
-# re-judge the same generations (cheap: only judge calls repeat), then aggregate
-uv run twominds analyze -r results/twominds/my_run --judge-run rep2
-uv run twominds consistency -r results/twominds/my_run
-```
-
-`consistency` reports partition stability (ARI/NMI), consensus strength, and
-the fraction of verdicts that flip between passes — single-pass comparisons
-are mostly safe; certify the differences you care about with 2–3 reps. And
-`uv run twominds stress --dry-run` plans the synthetic ground-truth evaluation
-of the judge itself.
-
-Embedding backends: `openai-3-small` (default), `openai-3-large`, and the
-opt-in `local` (`uv sync --group local-embeddings`, then `-b local`). Treat
-the judge's groups as the primary read; clustering thresholds are
-backend-dependent.
 
 ## Reproducing results
 
 Temperature-1.0 resampling is the *object of study*, so individual answers
-never reproduce; the pipeline and the aggregate signals do: `uv.lock` pins the
-environment, every run dir is self-describing (`run_config.json`,
-`questions.json`, `judge_meta.json`, and the raw Inspect logs of every call),
-and `--roster <name>` freezes a question list against later roster edits.
-
-## Contributing
-
-PRs welcome — [CONTRIBUTING.md](CONTRIBUTING.md) has the PR procedure and
-merge policy; the [architecture & contributor guide](twominds/README.md)
-explains the codebase, with recipes for adding questions, families, models,
-backends, and metrics.
+never reproduce; the pipeline and the aggregate scores do. `uv.lock` pins the
+environment and every run dir records exactly what was asked of which model.
 
 ## Citing
 
-If you use TwoMinds, please cite it — see [CITATION.cff](CITATION.cff)
-(*"TwoMinds: within-model coherence evals for LLMs"*, v0.2.0). MIT license
-([LICENSE](LICENSE)).
+Anonymized for double-blind review; see [CITATION.cff](CITATION.cff). MIT
+license ([LICENSE](LICENSE)).
 
 *Logo and artwork generated with Google Gemini.*

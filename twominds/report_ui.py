@@ -1,7 +1,7 @@
 """Shared building blocks for the self-contained HTML reports.
 
-``report.py`` / ``multi_report.py`` / ``families_report.py`` each ship one
-portable HTML file; this module holds what they used to copy: the model color
+``report.py`` ships one portable HTML file; this module holds its shared
+building blocks: the model color
 ``PALETTE`` (single source, injected into the JS), the JSON-injection guard,
 the document shell, the common CSS design system (``BASE_CSS``), and the JS
 helper preamble (``BASE_JS``) every report page loads first.
@@ -29,55 +29,6 @@ PALETTE = [
     "#7ad17a",
     "#d99bff",
 ]
-
-# One significance level for the framing-dependence test everywhere it is read
-# (report.py's Families tab verdicts, families_report's pills and its
-# "framing-driven only" filter): the permutation p-value of I(G;V) — does the
-# pooled judge's partition depend on the framing more than a random relabelling
-# of the same answers would?
-FAM_ALPHA = 0.05
-
-FAM_VERDICT_NO_JUDGE = "no verdict (judge failed)"
-FAM_VERDICT_SINGLE = "single position across framings"
-FAM_VERDICT_DIRECTED = "position tracks the framing (directed)"
-FAM_VERDICT_UNDIRECTED = "positions vary, not with the framing (undirected)"
-FAM_VERDICT_UNTESTED = "positions vary (framing test not computed; re-run analyze)"
-
-
-def fam_verdict(judge: dict | None) -> str:
-    """Plain-language read of one pooled-judge record (``families[].judge``).
-
-    The pooled bundle's answer spread is H(G) = H(G|V) + I(G;V). One group is
-    no spread at all. Otherwise the permutation test on I(G;V) decides whether
-    the framing explains the spread (directed) or the model scatters within
-    framings too (undirected). An unparseable judge reply is not a verdict.
-    """
-    if not judge or judge.get("parse_ok") is False or judge.get("n_groups") is None:
-        return FAM_VERDICT_NO_JUDGE
-    if judge.get("n_groups") == 1:
-        return FAM_VERDICT_SINGLE
-    p = judge.get("mi_p")
-    if p is None:
-        return FAM_VERDICT_UNTESTED
-    if p < FAM_ALPHA:
-        return FAM_VERDICT_DIRECTED
-    return FAM_VERDICT_UNDIRECTED
-
-
-def fmt_p(p: float | None) -> str:
-    """``p<.001`` / ``p=.031`` / ``—``."""
-    if p is None:
-        return "—"
-    return "p<.001" if p < 0.001 else "p=" + f"{p:.3f}".lstrip("0")
-
-
-def is_family_question(qmeta: dict, qid: str) -> bool:
-    """A cross-variant framing-family question. Within-prompt resampling is the
-    wrong metric for these (the signal is the cross-variant split, see
-    ``families.py`` / ``families_report.html``), so every within-prompt view —
-    the explorer cards, the interactive chart, and the static PNG — excludes
-    them rather than showing meaningless low-variance bars."""
-    return bool((qmeta.get(qid) or {}).get("family"))
 
 
 def json_blob(x) -> str:

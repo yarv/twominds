@@ -1,29 +1,20 @@
-"""Analysis phase: load generation logs, run the judge + embedding clustering.
+"""Analysis phase: run the cross-sample judge over a run's generations.
 
 Reads ``<run>/logs/<model>/*.eval`` and ``<run>/questions.json`` (both written by
-the generation phase), then for every (model, question) bundle computes:
-  - the cross-sample coherence judge verdict (groups, contradiction, flags),
-  - embedding clusters for each requested backend,
-  - judge-vs-cluster agreement (ARI/NMI) and variance metrics,
-and writes ``<run>/analysis.json``.
+the generation phase), then for every (model, question) bundle records the
+judge verdict (groups, contradiction, flags) and the answer-spread metrics,
+rolls them up into per-model scores, and writes ``<run>/analysis.json``.
 """
 
 from __future__ import annotations
 
 import json
-import random
 import sys
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-
-from . import cluster as cluster_mod
-from . import cost as cost_mod
-from . import families as families_mod
 from . import metrics as metrics_mod
-from .embed import DEFAULT_LOCAL_MODEL, get_embedder
-from .judge import JudgeResult, remap_result, run_judge_eval
+from .judge import JudgeResult, run_judge_eval
 from .models import DEFAULT_JUDGE, DEFAULT_JUDGE_CONCURRENCY, DEFAULT_JUDGE_REASONING
 
 
@@ -36,8 +27,7 @@ def _responses_from_analysis(run_dir: Path) -> dict[str, dict[str, list[str]]]:
     """Rebuild the response bundles from a prior ``analysis.json``.
 
     The analysis stores every response verbatim, so a re-judge doesn't need the
-    raw eval logs — they may be gone (the store prunes generations as
-    regenerable, leaving the run's ``logs/`` symlinks dangling).
+    raw eval logs.
     """
     path = Path(run_dir) / "analysis.json"
     if not path.exists():
@@ -78,9 +68,9 @@ def load_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
     """{model_name: {question_id: [response, ...]}} from the per-model .eval logs.
 
     Reads both log shapes — fused (one sample per question, its N responses in
-    the sample store; judge-inline runs) and legacy epochs (one sample instance
-    per response). Falls back to the run's ``analysis.json`` when the logs
-    yield nothing.
+    the sample store; judge-inline runs) and epochs (one sample instance per
+    response). Falls back to the run's ``analysis.json`` when the logs yield
+    nothing.
     """
     from inspect_ai.log import read_eval_log
 
@@ -114,12 +104,11 @@ def load_responses(run_dir: Path) -> dict[str, dict[str, list[str]]]:
             qmap.setdefault(qid, []).append(completion)
         out[label] = qmap
     if not any(out.values()):
-        # logs dir present but no readable eval logs — e.g. the store pruned the
-        # generations this run's logs/ symlinks point at
+        # logs dir present but no readable eval logs
         fallback = _responses_from_analysis(run_dir)
         if fallback:
             print(
-                f"note: no eval logs under {logs_root} (dangling store symlinks?); "
+                f"note: no eval logs under {logs_root}; "
                 "re-judging the responses stored in analysis.json",
                 flush=True,
             )
@@ -138,8 +127,8 @@ def load_judge_scores(
 
     Only verdicts whose stamped identity (judge model, reasoning effort, judge
     prompt hash) matches the requested config are returned — anything else
-    (legacy logs, a different judge, an edited judge prompt) yields nothing
-    for that sample and gets judged fresh."""
+    (epoch-shaped logs, a different judge, an edited judge prompt) yields
+    nothing for that sample and gets judged fresh."""
     from inspect_ai.log import read_eval_log
 
     from .judge import judge_identity
@@ -165,453 +154,78 @@ def load_questions_meta(run_dir: Path) -> dict[str, dict]:
     return {}
 
 
-def load_families_meta(run_dir: Path) -> dict[str, dict]:
-    """{family_id: {prompt, scalar, title, description}} written by generation."""
-    path = Path(run_dir) / "families.json"
-    if path.exists():
-        return json.loads(path.read_text())
-    return {}
-
-
-def _rep_permutation(judge_run: str, model: str, qid: str, n: int) -> list[int]:
-    """Deterministic presentation order for one bundle in one repeat judge pass.
-
-    Seeded by (rep label, model, question) so a resumed/re-run repK always
-    shows the judge the same order, while different reps show different orders
-    (position-robustness across reps). ``perm[j]`` is the canonical index of
-    the response presented at position ``j``.
-    """
-    perm = list(range(n))
-    random.Random(f"{judge_run}\x1f{model}\x1f{qid}").shuffle(perm)
-    return perm
-
-
-def _family_pass(
-    families_meta: dict[str, dict],
-    responses: dict[str, dict[str, list[str]]],
-    qmeta: dict[str, dict],
-    embeds: dict[str, dict[tuple[str, str], "np.ndarray"]],
-    primary_backend: str,
-    *,
-    run_judge: bool,
-    judge_name: str,
-    judge_reasoning: Optional[str],
-    concurrency: int,
-    threshold: float,
-    judge_log_path: Optional[Path] = None,
-    pool_salt: Optional[str] = None,
-) -> list[dict]:
-    """Cross-variant analysis: pool each (model, family) and score the framing split.
-
-    Returns one record per (model, family) with the scalar swing (model-free) and,
-    when ``run_judge``, the blind pooled-judge ARI vs the framing labels + the
-    variant x judge-group contingency. See ``families.py``.
-    """
-    # Group variant question ids per family (deterministic variant order).
-    variants_by_family: dict[str, list[tuple[str, str]]] = {}
-    for qid, meta in qmeta.items():
-        fam = meta.get("family")
-        if fam and fam in families_meta:
-            variants_by_family.setdefault(fam, []).append(
-                (meta.get("variant") or qid, qid)
-            )
-    for fam in variants_by_family:
-        variants_by_family[fam].sort()  # by (variant_label, qid)
-
-    # Build every (model, family) pool first, so the pooled judge runs in one batch.
-    pools: list[dict] = []
-    for model_name in sorted(responses):
-        rmap = responses[model_name]
-        for fam, pairs in variants_by_family.items():
-            if len(pairs) < 2:
-                continue
-            v2resp = {v: rmap.get(qid, []) for v, qid in pairs}
-            if any(len(rs) == 0 for rs in v2resp.values()):
-                continue  # a variant failed to generate for this model; skip cleanly
-            order = [v for v, _ in pairs]
-            # pool_salt (the repeat-pass label) varies the blind-pool order per
-            # judge rep — see _rep_permutation for the per-question equivalent.
-            seed = families_mod._seed(model_name, fam, salt=pool_salt)
-            texts, var_labels, sources = families_mod.build_pool(
-                v2resp, order, seed=seed
-            )
-            pools.append(
-                {
-                    "model": model_name,
-                    "family": fam,
-                    "order": order,
-                    "v2qid": {v: qid for v, qid in pairs},
-                    "v2resp": v2resp,
-                    "texts": texts,
-                    "var_labels": var_labels,
-                    "sources": sources,
-                }
-            )
-
-    if not pools:
-        return []
-
-    fam_judge: dict[tuple[str, str], JudgeResult] = {}
-    if run_judge:
-        judge_items = [
-            (p["model"], p["family"], families_meta[p["family"]]["prompt"], p["texts"])
-            for p in pools
-        ]
-        print(
-            f"judging {len(judge_items)} pooled family bundle(s) with "
-            f"{judge_name} (x{concurrency} concurrent) ...",
-            flush=True,
-        )
-        fam_judge = families_mod.judge_families(
-            judge_items,
-            judge_name=judge_name,
-            reasoning_effort=judge_reasoning,
-            concurrency=concurrency,
-            log_path=judge_log_path,
-            display=_judge_display(),
-        )
-
-    out: list[dict] = []
-    for p in pools:
-        model_name, fam = p["model"], p["family"]
-        meta = families_meta[fam]
-        kind = meta.get("scalar")
-        order, var_labels, sources = p["order"], p["var_labels"], p["sources"]
-        n_total = len(p["texts"])
-
-        rec: dict = {
-            "model": model_name,
-            "family": fam,
-            "title": meta.get("title", fam),
-            "description": meta.get("description", ""),
-            "scalar_kind": kind,
-            "variants": [
-                {"variant": v, "question_id": p["v2qid"][v], "n": len(p["v2resp"][v])}
-                for v in order
-            ],
-            "n_total": n_total,
-            "scalar": None,
-            "judge": None,
-            "cluster": None,
-        }
-
-        if kind:
-            # Parse the line the prompts asked for: the final line for every
-            # shipped family, the first line for legacy "First line:" rosters
-            # (inferred from the stored prompts unless the family pins it).
-            answer_line = families_mod.answer_line_for(
-                meta,
-                (qmeta.get(qid, {}).get("prompt", "") for qid in p["v2qid"].values()),
-            )
-            scale = meta.get("scale")
-            per_variant = families_mod.per_variant_scalar(
-                kind,
-                p["v2resp"],
-                answer_line=answer_line,
-                scale=tuple(scale) if scale else None,
-            )
-            rec["scalar"] = {
-                "kind": kind,
-                "answer_line": answer_line,
-                "scale": list(scale) if scale else None,
-                "per_variant": per_variant,
-                "swing": families_mod.scalar_swing(kind, per_variant),
-                "swing_p": families_mod.scalar_swing_p(kind, per_variant),
-            }
-
-        jr = fam_judge.get((model_name, fam))
-        if jr is not None and not jr.parse_ok:
-            # The judge's fallback verdict (one group, no contradiction) is not
-            # a measurement: scoring it would read as "single position across
-            # framings". Keep the record, mark it, score nothing.
-            rec["judge"] = {
-                "parse_ok": False,
-                "ari": None,
-                "nmi": None,
-                "n_groups": None,
-                "contingency": [],
-                "group_ids": [],
-                "h_groups": None,
-                "h_variants": None,
-                "h_cond": None,
-                "mi": None,
-                "mi_p": None,
-                "group_names": [],
-                "contradiction": None,
-                "rationale": jr.rationale,
-                "flags": jr.flags,
-            }
-        elif jr is not None:
-            jl = jr.labels(n_total)
-            align = families_mod.family_alignment(jl, var_labels, len(order))
-            # Persist the exact per-response judge groups, mapped back from
-            # pool order — the report can then tint responses even when the
-            # judge splits a variant across groups (counts alone cannot).
-            per_var = families_mod.groups_by_variant(
-                jl, sources, [len(p["v2resp"][v]) for v in order]
-            )
-            for vi, vrec in enumerate(rec["variants"]):
-                vrec["groups"] = per_var[vi]
-            rec["judge"] = {
-                **align,
-                "group_names": jr.group_names,
-                "contradiction": jr.contradiction,
-                "rationale": jr.rationale,
-                "flags": jr.flags,
-                "parse_ok": jr.parse_ok,
-            }
-
-        # Model-free cross-check: cluster the pooled embeddings, ARI vs framing.
-        emb_pool = []
-        ok = True
-        for vi, wi in sources:
-            qid = p["v2qid"][order[vi]]
-            arr = embeds.get(primary_backend, {}).get((model_name, qid))
-            if arr is None or wi >= len(arr):
-                ok = False
-                break
-            emb_pool.append(arr[wi])
-        if ok and emb_pool:
-            mat = np.vstack(emb_pool)
-            clabels = cluster_mod.cluster_responses(mat, threshold=threshold)
-            cagr = cluster_mod.agreement(clabels, var_labels)
-            rec["cluster"] = {
-                "ari": cagr["ari"],
-                "nmi": cagr["nmi"],
-                "n_clusters": len(set(clabels)),
-            }
-
-        out.append(rec)
-    return out
-
-
-def _embed_all(
-    bundles: list[tuple[str, str, list[str]]],
-    backends: list[str],
-    local_model: str,
-    *,
-    cache_dir: Optional[Path] = None,
-    refresh: bool = False,
-) -> dict[str, dict[tuple[str, str], np.ndarray]]:
-    """For each backend, embed every bundle's responses (one batched call per backend).
-
-    Embeddings depend only on the (fixed) generations, not the judge, so they are
-    cached per backend under ``cache_dir`` keyed by a content hash. Repeated judge
-    runs on the same generations reuse the cache (cheap, and keeps reports featured).
-    """
-    import hashlib
-
-    flat_texts: list[str] = []
-    spans: list[tuple[tuple[str, str], int, int]] = []
-    for model_name, qid, responses in bundles:
-        start = len(flat_texts)
-        flat_texts.extend(responses)
-        spans.append(((model_name, qid), start, len(flat_texts)))
-    content_hash = hashlib.sha256("\x1f".join(flat_texts).encode("utf-8")).hexdigest()[
-        :16
-    ]
-
-    by_backend: dict[str, dict[tuple[str, str], np.ndarray]] = {}
-    for backend in backends:
-        vecs: Optional[np.ndarray] = None
-        cache_file = (Path(cache_dir) / f"emb_{backend}.npz") if cache_dir else None
-        if cache_file and cache_file.exists() and not refresh:
-            try:
-                d = np.load(cache_file)
-                if str(d["hash"].item()) == content_hash and d["mat"].shape[0] == len(
-                    flat_texts
-                ):
-                    vecs = d["mat"]
-            except Exception:
-                vecs = None
-        if vecs is None:
-            embedder = get_embedder(backend, local_model=local_model)
-            vecs = (
-                embedder.embed(flat_texts)
-                if flat_texts
-                else np.zeros((0, 0), dtype=np.float32)
-            )
-            if cache_file is not None and len(flat_texts):
-                cache_file.parent.mkdir(parents=True, exist_ok=True)
-                np.savez(cache_file, mat=vecs, hash=np.array(content_hash))
-        per_bundle: dict[tuple[str, str], np.ndarray] = {}
-        for key, start, end in spans:
-            per_bundle[key] = vecs[start:end]
-        by_backend[backend] = per_bundle
-    return by_backend
-
-
 def analyze(
     run_dir: Path,
     *,
-    backends: Optional[list[str]] = None,
     judge_name: str = DEFAULT_JUDGE,
     judge_reasoning: Optional[str] = DEFAULT_JUDGE_REASONING,
-    threshold: float = cluster_mod.DEFAULT_THRESHOLD,
-    local_model: str = DEFAULT_LOCAL_MODEL,
     concurrency: int = DEFAULT_JUDGE_CONCURRENCY,
-    run_judge: bool = True,
-    judge_run: Optional[str] = None,
-    refresh_embeddings: bool = False,
-    models: Optional[list[str]] = None,
     out_dir: Optional[Path] = None,
-    cache_dir: Optional[Path] = None,
-    progress_label: Optional[str] = None,
 ) -> dict:
-    """Judge + cluster a run's generations into ``analysis.json``.
+    """Judge a run's generations into ``analysis.json``.
 
-    ``judge_run`` isolates a repeated judge pass under ``judge_runs/<label>/`` so
-    re-judging the same generations never clobbers a prior run (the input to the
-    cross-run consistency stats). The embedding cache lives at ``run_dir/cache`` and
-    is shared across judge reps, so re-judges reuse embeddings for free.
-
-    ``models`` restricts the pass to a subset of the generated models (the store
-    judges each model into its own cached fragment). ``out_dir`` overrides where
-    ``analysis.json`` + the judge logs are written (default: ``run_dir`` or
-    ``run_dir/judge_runs/<judge_run>``) and ``cache_dir`` overrides the embedding
-    cache location (default: ``run_dir/cache``, shared across judge reps — the
-    store passes a per-gen subdir so fragments don't clobber that shared cache).
-    ``progress_label`` prefixes the phase announcement (fragment runs say which
-    model is being judged).
+    Verdicts the inline judge already wrote into the generation logs (same
+    judge model, reasoning effort and prompt) are reused; every other bundle is
+    judged now, as one Inspect eval with the bundles as samples. ``out_dir``
+    overrides where ``analysis.json`` and the judge logs are written (default:
+    ``run_dir``).
     """
     run_dir = Path(run_dir)
-    # None = default (local); [] = embeddings explicitly disabled (judge-only).
-    backends = ["openai-3-small"] if backends is None else list(backends)
-    primary_backend = backends[0] if backends else None
-    if out_dir is None:
-        out_dir = (run_dir / "judge_runs" / judge_run) if judge_run else run_dir
-    out_dir = Path(out_dir)
+    out_dir = Path(out_dir) if out_dir is not None else run_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    cache_dir = Path(cache_dir) if cache_dir is not None else run_dir / "cache"
-    if progress_label:
-        print(f"=== {progress_label} ===", flush=True)
 
     responses = load_responses(run_dir)
-    if models is not None:
-        missing = sorted(set(models) - set(responses))
-        if missing:
-            raise KeyError(f"no generation logs for model(s) {missing} in {run_dir}")
-        responses = {m: responses[m] for m in models}
     qmeta = load_questions_meta(run_dir)
 
-    # Flatten to bundles, preserving question/group order where known.
+    # Flatten to bundles, preserving question order where known.
     bundles: list[tuple[str, str, list[str]]] = []
     for model_name in sorted(responses):
         for qid, resps in responses[model_name].items():
             bundles.append((model_name, qid, resps))
 
-    # --- judge (cross-sample) — harvested from fused generation logs where the
-    # verdicts already exist for this exact judge config, judged fresh otherwise
-    # (one Inspect eval, bundles as samples). Repeat passes (judge_run set)
-    # never harvest: they exist to measure judge stability, so they must call
-    # the judge again.
-    judge_results: dict[tuple[str, str], JudgeResult] = {}
-    or_before = or_after = None  # OpenRouter usage snapshots (judge spend delta)
-    if run_judge:
-        harvested: dict[tuple[str, str], JudgeResult] = {}
-        if judge_run is None:
-            in_log = load_judge_scores(run_dir, judge_name, judge_reasoning)
-            harvested = {
-                (m, qid): in_log[(m, qid)]
-                for (m, qid, _resps) in bundles
-                if (m, qid) in in_log and not qmeta.get(qid, {}).get("family")
-            }
-            if harvested:
-                print(
-                    f"reusing {len(harvested)} judge verdict(s) from the "
-                    "generation logs (judged inline during the sweep)",
-                    flush=True,
-                )
-        # Family variants are judged ACROSS variants by the pooled family judge;
-        # a within-variant verdict is never displayed anywhere, so skip the
-        # per-question judge for them (~40% of judge calls on the default sweep).
-        judge_items = [
-            ((m, qid), qmeta.get(qid, {}).get("prompt", qid), resps)
-            for (m, qid, resps) in bundles
-            if not qmeta.get(qid, {}).get("family") and (m, qid) not in harvested
-        ]
-        # Repeat passes present each bundle in a fresh deterministic order, so
-        # cross-rep consistency also measures the judge's robustness to response
-        # position, not just resampling noise. Verdicts are mapped back to
-        # generation order below — the repK judge log keeps the shuffled
-        # numbering, analysis.json the canonical one.
-        perms: dict[tuple[str, str], list[int]] = {}
-        if judge_run is not None:
-            shuffled_items = []
-            for key, question, resps in judge_items:
-                perm = _rep_permutation(judge_run, key[0], key[1], len(resps))
-                perms[key] = perm
-                shuffled_items.append((key, question, [resps[j] for j in perm]))
-            judge_items = shuffled_items
-        if judge_items:
-            # Say how much work is queued: a big judge eval runs for minutes
-            # and would otherwise read as a hang.
-            print(
-                f"judging {len(judge_items)} bundle(s) with {judge_name} "
-                f"(x{concurrency} concurrent) ...",
-                flush=True,
-            )
-        or_before = cost_mod.openrouter_usage()
-        judge_results, _ = run_judge_eval(
-            judge_items,
-            judge_name=judge_name,
-            reasoning_effort=judge_reasoning,
-            max_connections=concurrency,
-            log_path=out_dir / "judge_logs" / "responses",
-            display=_judge_display(),
+    in_log = load_judge_scores(run_dir, judge_name, judge_reasoning)
+    harvested = {
+        (m, qid): in_log[(m, qid)] for (m, qid, _resps) in bundles if (m, qid) in in_log
+    }
+    if harvested:
+        print(
+            f"reusing {len(harvested)} judge verdict(s) from the "
+            "generation logs (judged inline during the sweep)",
+            flush=True,
         )
-        or_after = cost_mod.openrouter_usage()
-        if perms:
-            judge_results = {
-                k: (remap_result(jr, perms[k]) if k in perms else jr)
-                for k, jr in judge_results.items()
-            }
-        judge_results.update(harvested)
-
-    # --- embeddings + clustering (cached per backend; reused across judge runs) ---
-    embeds = _embed_all(
-        bundles,
-        backends,
-        local_model,
-        cache_dir=cache_dir,
-        refresh=refresh_embeddings,
+    judge_items = [
+        ((m, qid), qmeta.get(qid, {}).get("prompt", qid), resps)
+        for (m, qid, resps) in bundles
+        if (m, qid) not in harvested
+    ]
+    if judge_items:
+        # Say how much work is queued: a big judge eval runs for minutes
+        # and would otherwise read as a hang.
+        print(
+            f"judging {len(judge_items)} bundle(s) with {judge_name} "
+            f"(x{concurrency} concurrent) ...",
+            flush=True,
+        )
+    judge_results, _ = run_judge_eval(
+        judge_items,
+        judge_name=judge_name,
+        reasoning_effort=judge_reasoning,
+        max_connections=concurrency,
+        log_path=out_dir / "judge_logs" / "responses",
+        display=_judge_display(),
     )
+    judge_results.update(harvested)
 
     results = []
     for model_name, qid, resps in bundles:
         n = len(resps)
         jr = judge_results.get((model_name, qid))
-        clusters_out: dict[str, dict] = {}
-        agreement_out: dict[str, dict] = {}
-        for backend in backends:
-            emb = embeds[backend][(model_name, qid)]
-            labels = cluster_mod.cluster_responses(emb, threshold=threshold)
-            clusters_out[backend] = {
-                "labels": labels,
-                "n_clusters": len(set(labels)) if labels else 0,
-            }
-            if jr is not None and n >= 1:
-                agreement_out[backend] = cluster_mod.agreement(jr.labels(n), labels)
-
-        primary_emb = (
-            embeds[primary_backend][(model_name, qid)] if primary_backend else None
-        )
         m = metrics_mod.variance_metrics(
-            resps,
-            embeddings=primary_emb,
-            n_judge_groups=(jr.n_groups if jr is not None else None),
-            n_clusters=(
-                clusters_out[primary_backend]["n_clusters"] if primary_backend else None
-            ),
+            resps, n_judge_groups=(jr.n_groups if jr is not None else None)
         )
-        # Entropy of the judge's grouping: -sum p_k log p_k over group frequencies.
+        # Answer spread: entropy of the judge's grouping, -sum p_k log p_k.
         if jr is not None:
             m["group_entropy"] = metrics_mod.group_entropy(jr.labels(n))
-        if primary_backend:
-            m["cluster_entropy"] = metrics_mod.group_entropy(
-                clusters_out[primary_backend]["labels"]
-            )
-
         results.append(
             {
                 "model": model_name,
@@ -620,73 +234,27 @@ def analyze(
                 "responses": resps,
                 "judge": jr.to_dict() if jr is not None else None,
                 "judge_labels": jr.labels(n) if jr is not None else None,
-                "clusters": clusters_out,
-                "agreement": agreement_out,
                 "metrics": m,
             }
         )
 
-    # --- cross-variant family analysis (framing-invariance) ---
-    families_meta = load_families_meta(run_dir)
-    family_results = _family_pass(
-        families_meta,
-        responses,
-        qmeta,
-        embeds,
-        primary_backend,
-        run_judge=run_judge,
-        judge_name=judge_name,
-        judge_reasoning=judge_reasoning,
-        concurrency=concurrency,
-        threshold=threshold,
-        judge_log_path=out_dir / "judge_logs" / "families",
-        pool_salt=judge_run,
-    )
-
-    # --- cost: token×price estimate reconciled with the OpenRouter delta ---
-    cost_record: dict = {}
-    if run_judge:
-        jt_in = sum(r.input_tokens for r in judge_results.values())
-        jt_out = sum(r.output_tokens for r in judge_results.values())
-        od = (
-            or_after - or_before
-            if (or_before is not None and or_after is not None)
-            else None
-        )
-        cost_record["judge"] = {
-            "model": judge_name,
-            "in_tok": jt_in,
-            "out_tok": jt_out,
-            "est_dollars": cost_mod.judge_dollars(jt_in, jt_out),
-            "openrouter_delta": od,
-        }
-    # Generation cost belongs to the run itself, not to each judge rep.
-    if judge_run is None:
-        gen = cost_mod.generation_usage(run_dir)
-        if gen:
-            cost_record["generation"] = gen
-
-    # Display names come from the manifest (write_manifest persists spec.display);
-    # runs that predate it fall back to the short name.
+    # Display names come from the manifest (write_manifest persists spec.display).
     run_config: dict = {}
     cfg_path = run_dir / "run_config.json"
     if cfg_path.exists():
         run_config = json.loads(cfg_path.read_text())
     manifest_models = run_config.get("models") or {}
+    models = sorted(responses)
     model_display = {
         name: (manifest_models.get(name) or {}).get("display") or name
-        for name in sorted(responses)
+        for name in models
     }
 
     out = {
         "run_dir": str(run_dir),
-        "judge_run": judge_run,
-        "backends": backends,
-        "primary_backend": primary_backend,
-        "judge": judge_name if run_judge else None,
-        "judge_reasoning": judge_reasoning if run_judge else None,
-        "threshold": threshold,
-        "models": sorted(responses),
+        "judge": judge_name,
+        "judge_reasoning": judge_reasoning,
+        "models": models,
         "model_display": model_display,
         "config": {
             k: run_config.get(k)
@@ -694,33 +262,8 @@ def analyze(
             if k in run_config
         },
         "questions": qmeta,
-        "families_meta": families_meta,
         "results": results,
-        "families": family_results,
-        "cost": cost_record,
+        "scores": metrics_mod.model_scores(results, models),
     }
     (out_dir / "analysis.json").write_text(json.dumps(out, indent=2))
-    if cost_record:
-        cost_mod.write_cost(out_dir / "cost.json", cost_record)
-
-    from .run_meta import JUDGE_META, build_meta, write_meta_safe
-
-    write_meta_safe(
-        out_dir,
-        build_meta(
-            "judge_run",
-            label=judge_run or "default",
-            parent_run=run_dir.name,
-            judge_model=judge_name if run_judge else None,
-            judge_reasoning=judge_reasoning if run_judge else None,
-            threshold=threshold,
-            backends=backends,
-            n_bundles=len(results),
-        ),
-        filename=JUDGE_META,
-    )
-    if family_results:
-        from .families_report import build_families_report
-
-        build_families_report(out, out_dir / "families_report.html")
     return out

@@ -7,14 +7,8 @@ interactive chart and the embedded PNG never disagree on colour, labels, or the
 macro-average exclusion set.
 
 One renderer (``CHART_JS`` → ``window.initCategoryChart(data, mountId, opts)``)
-serves two hosts:
-
-* ``report.py`` — a single judge pass; one value per (model, question) bar, no
-  error bars. Built by :func:`build_chart_data`.
-* ``multi_report.py`` — K repeated judge passes; judge-derived metrics carry a
-  per-pass list, so the chart draws ±1 SD error bars across passes. Built by
-  :func:`build_chart_data_multi`. (Embedding metrics are judge-invariant — the
-  embeddings are fixed across passes — so they stay single-valued, no error bars.)
+draws one value per (model, question) bar from the ``CHART`` blob built by
+:func:`build_chart_data`.
 
 The chart has two modes:
 
@@ -25,30 +19,17 @@ The chart has two modes:
   reader to that question's actual responses (category → questions → responses).
 
 The host supplies the compact ``CHART`` data blob (numbers only, a few KB) so the
-single renderer works against both reports despite their different ``DATA`` shapes.
+renderer stays independent of the report's ``DATA`` shape.
 """
 
 from __future__ import annotations
 
 from twominds import category_bars as cb
-from twominds.report_ui import is_family_question
 
-# Canonical metric order + display labels. The three judge/embedding entropy
-# metrics come from category_bars.METRICS; cosine distance is chart-only.
-METRIC_ORDER = [
-    "group_entropy",
-    "n_judge_groups",
-    "cluster_entropy",
-    "mean_pairwise_cosine_dist",
-]
-METRIC_LABELS = {
-    **cb.METRICS,
-    "mean_pairwise_cosine_dist": "wording variety (embedding distance)",
-}
-# Only judge-derived metrics vary across repeated judge passes, so only these get
-# error bars in the multi-run report; the embedding metrics are judge-invariant.
+# Canonical metric order + display labels (from category_bars.METRICS).
+METRIC_ORDER = ["group_entropy", "n_judge_groups"]
+METRIC_LABELS = dict(cb.METRICS)
 JUDGE_METRICS = ["group_entropy", "n_judge_groups"]
-EMBED_METRICS = ["cluster_entropy", "mean_pairwise_cosine_dist"]
 
 
 def _present_metrics(cells: list[dict]) -> list[str]:
@@ -88,22 +69,14 @@ def _assemble(
     }
 
 
-_is_family_q = is_family_question
-
-
 def build_chart_data(analysis: dict) -> dict:
-    """Single judge run → one rep per (model, question) cell (no error bars).
-
-    Cross-variant framing-family questions are excluded (see :func:`_is_family_q`).
-    """
+    """Single judge run → one rep per (model, question) cell (no error bars)."""
     results = analysis.get("results", [])
     qmeta = analysis.get("questions") or {}
     models_order = list(analysis.get("models") or sorted({r["model"] for r in results}))
     cells: list[dict] = []
     q_used: set = set()
     for r in results:
-        if _is_family_q(qmeta, r["question_id"]):
-            continue
         m = r.get("metrics") or {}
         vals = {k: [float(m[k])] for k in METRIC_ORDER if m.get(k) is not None}
         if not vals:
@@ -119,64 +92,6 @@ def build_chart_data(analysis: dict) -> dict:
         )
         q_used.add(r["question_id"])
     return _assemble(cells, models_order, qmeta, q_used, 1)
-
-
-def build_chart_data_multi(runs: dict[str, dict]) -> dict:
-    """K judge passes → judge metrics carry a per-pass list (→ ±SD error bars).
-
-    ``runs`` maps judge-run label → analysis dict (the same mapping
-    ``multi_report.build_multi_report`` receives). Embedding metrics stay
-    single-valued because they do not depend on the judge.
-    """
-    labels = list(runs)
-    if not labels:
-        return _assemble([], [], {}, set(), 0)
-    first = runs[labels[0]]
-    qmeta = first.get("questions") or {}
-    models_order = list(first.get("models") or [])
-    idx = {
-        lab: {(r["model"], r["question_id"]): r for r in a.get("results", [])}
-        for lab, a in runs.items()
-    }
-    keys = sorted(set().union(*[set(i.keys()) for i in idx.values()]))
-
-    cells: list[dict] = []
-    q_used: set = set()
-    for mdl, qid in keys:
-        if _is_family_q(qmeta, qid):  # exclude cross-variant framing families
-            continue
-        recs = [idx[lab].get((mdl, qid)) for lab in labels]
-        recs = [r for r in recs if r is not None]
-        if not recs:
-            continue
-        group = next((r.get("group") or "?" for r in recs), "?")
-        vals: dict[str, list[float]] = {}
-        for k in JUDGE_METRICS:  # full per-pass list → error bar
-            seq = [
-                float((r.get("metrics") or {})[k])
-                for r in recs
-                if (r.get("metrics") or {}).get(k) is not None
-            ]
-            if seq:
-                vals[k] = seq
-        for k in EMBED_METRICS:  # judge-invariant → single value
-            for r in recs:
-                v = (r.get("metrics") or {}).get(k)
-                if v is not None:
-                    vals[k] = [float(v)]
-                    break
-        if not vals:
-            continue
-        bucket = (qmeta.get(qid) or {}).get("bucket") or "?"
-        cells.append(
-            {"model": mdl, "group": group, "bucket": bucket, "qid": qid, "vals": vals}
-        )
-        q_used.add(qid)
-
-    for mdl, _qid in keys:  # models seen only in later runs (defensive)
-        if mdl not in models_order:
-            models_order.append(mdl)
-    return _assemble(cells, models_order, qmeta, q_used, len(labels))
 
 
 def chart_section_html(mount_id: str = "cchart") -> str:

@@ -1,7 +1,7 @@
 [project]
 name = "twominds"
 version = "0.2.0"
-description = "TwoMinds: within-model coherence evals for LLMs — repeated free-form sampling scored by a cross-sample LLM judge and embedding clustering."
+description = "TwoMinds: within-model coherence evals for LLMs — repeated free-form sampling scored by a cross-sample LLM judge."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 license = { file = "LICENSE" }
@@ -25,7 +25,6 @@ dependencies = [
     "openai>=1.63.0",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.2",
-    "scikit-learn>=1.7.2",
     "tiktoken>=0.7.0",
     "typer>=0.9.0",
 ]
@@ -42,17 +41,8 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.5.1",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
-]
-# The optional `-b local` embedding backend (sentence-transformers) pulls in
-# torch — by far the heaviest part of the install — so it is NOT a default
-# group: a bare `uv sync` stays lean and the default embedding backend is the
-# API-priced openai-3-small. Opt in with `uv sync --group local-embeddings`.
-local-embeddings = [
-    "sentence-transformers>=5.5.1",
-    "torch>=2.5.1",
 ]
 
 [tool.uv]

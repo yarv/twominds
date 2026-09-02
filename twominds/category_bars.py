@@ -6,7 +6,7 @@ chart of a mean per-bundle variance metric. The default metric is the judge
 self-consistency-group **entropy** (nats) -- the finest within-model-variance
 signal: an 11-vs-1 split scores near 0 and a 6-vs-6 split is maximal, a
 distinction a bare group *count* can't make. ``--metric`` also offers the mean
-judge-group count and the mean embedding-cluster entropy.
+judge-group count.
 
 The "category" is each bundle's ``group`` field (e.g. ``ai_safety``,
 ``sycophancy``); the bar height is that metric averaged over every question in
@@ -32,13 +32,12 @@ import matplotlib
 matplotlib.use("Agg")  # headless: render straight to PNG bytes / file
 import matplotlib.pyplot as plt  # noqa: E402
 
-from twominds.report_ui import PALETTE, is_family_question  # noqa: E402
+from twominds.report_ui import PALETTE  # noqa: E402
 
 # metrics[key] -> y-axis label. Keys are fields of each result's ``metrics`` dict.
 METRICS = {
     "group_entropy": "mean answer spread (entropy, nats)",
     "n_judge_groups": "mean # distinct positions (judge)",
-    "cluster_entropy": "mean embedding-cluster entropy (nats)",
 }
 
 # Question groups to leave out of the leftmost "overall" summary column (e.g.
@@ -51,10 +50,10 @@ OVERALL_LABEL = "overall*"  # x-axis label for the summary column
 
 def default_metric(analysis: dict) -> str | None:
     """Prefer group_entropy (the headline within-model-variance signal); fall
-    back to the judge-group count for older analyses that lack it, then cluster
-    entropy. Returns None if none of the three is present anywhere."""
+    back to the judge-group count for analyses that lack it. Returns None if
+    neither is present anywhere."""
     results = analysis.get("results", [])
-    for key in ("group_entropy", "n_judge_groups", "cluster_entropy"):
+    for key in ("group_entropy", "n_judge_groups"):
         if any((r.get("metrics") or {}).get(key) is not None for r in results):
             return key
     return None
@@ -84,12 +83,9 @@ def aggregate(analysis: dict, metric: str):
     order but drops any with no data; ``categories`` are ordered by descending
     overall mean (most-variable category first)."""
     results = analysis.get("results", [])
-    qmeta = analysis.get("questions") or {}
     models = list(analysis.get("models") or sorted({r["model"] for r in results}))
     buckets: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     for r in results:
-        if is_family_question(qmeta, r["question_id"]):
-            continue
         v = (r.get("metrics") or {}).get(metric)
         if v is None:
             continue
@@ -132,8 +128,7 @@ def render_figure(
 ):
     """A matplotlib Figure of the grouped bar chart, or None if there is no
     data for the (chosen or defaulted) metric. ``run_label`` overrides the run
-    name in the title (the combined-report analysis stores ``run_dir`` as the
-    placeholder ``<merged>``, so callers pass the real directory name).
+    name in the title (default: the analysis's ``run_dir`` leaf).
 
     When ``add_overall`` (default), a leftmost ``overall*`` summary column is
     prepended: the per-model macro-average across categories not in
@@ -261,8 +256,8 @@ def main() -> None:
     metric = args.metric or default_metric(analysis)
     if metric is None:
         raise SystemExit(
-            "no usable metric: need metrics.group_entropy / n_judge_groups / "
-            "cluster_entropy in analysis.json results"
+            "no usable metric: need metrics.group_entropy / n_judge_groups "
+            "in analysis.json results"
         )
     out = args.out or (args.run_dir / f"category_{metric}_bars.png")
     saved = save_png(
