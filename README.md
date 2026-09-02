@@ -4,8 +4,6 @@
 
 # TwoMinds
 
-[![CI](https://github.com/yarv/twominds/actions/workflows/ci.yml/badge.svg)](https://github.com/yarv/twominds/actions/workflows/ci.yml)
-
 **Does your LLM agree with itself?** TwoMinds asks a model the same question
 N times at temperature 1.0 and measures whether the answers take the same
 position — within-model coherence evals for LLMs.
@@ -37,7 +35,7 @@ report machinery — lives in the
 Needs [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ```bash
-git clone https://github.com/yarv/twominds && cd twominds
+git clone <repository-url> twominds && cd twominds
 uv sync                # lean install: no torch
 uv run pytest -q       # full test suite, no keys, ~20 s
 uv run twominds --help

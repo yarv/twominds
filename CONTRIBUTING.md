@@ -31,10 +31,7 @@ and has recipes for the common extensions.
 
 ## Merge policy
 
-Merges to `main` are performed only by the original authors —
-Robert Graham ([@themachinefan](https://github.com/themachinefan)),
-Phil Blandfort ([@blandfort](https://github.com/blandfort)), and
-Yariv Barsheshat ([@yarv](https://github.com/yarv)). Everyone else
+Merges to `main` are performed only by the maintainers. Everyone else
 contributes via PRs, and `main` takes only squash merges of green-CI PRs —
 no direct pushes, no force pushes.
 

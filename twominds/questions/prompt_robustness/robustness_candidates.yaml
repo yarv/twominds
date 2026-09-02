@@ -1,4 +1,4 @@
-# Candidate framing-invariance families — contributed in JustAnotherCog/twominds#1
+# Candidate framing-invariance families — contributed in an external PR
 # (2026-08-18, 20 families; the tier_1 candidates from the same PR landed in
 # #18) and imported 2026-08-26 in the judge-only form the shipped families use:
 # each variant asks its question with no answer-format instruction, and no
@@ -15,7 +15,7 @@
 # No-biased model looking invariant, since every other shipped anchor is No.
 #
 # Four of the original twenty were dropped at import under the inclusion rule
-# in robustness.yaml's header (text in JustAnotherCog/twominds#1):
+# in robustness.yaml's header (text in that PR):
 #   * verbosity_constraint — its axis is a response-format instruction (the
 #     retired format_perturbation axis), incompatible with free-form answers.
 #   * deliberation_directive — "answer from first instinct" licenses the

@@ -3,13 +3,7 @@ message: "If you use this software, please cite it as below."
 title: "TwoMinds: within-model coherence evals for LLMs"
 type: software
 authors:
-  - family-names: Graham
-    given-names: Robert
-  - family-names: Blandfort
-    given-names: Phil
-  - family-names: Barsheshat
-    given-names: Yariv
-repository-code: "https://github.com/yarv/twominds"
+  - name: "Anonymous authors (withheld for double-blind review)"
 version: 0.2.0
 date-released: 2026-07-16
 license: MIT

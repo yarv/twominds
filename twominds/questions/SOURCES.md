@@ -76,7 +76,7 @@ goes in each item's YAML `#` comment; this file is the category-level map.
 - ETHICS minimal pairs (cat 1) as belief-owner / stakes framings.
 - **Candidate families** (`robustness_candidates.yaml`, group
   `robustness_candidates`) — 16 of the 20 framing families contributed in
-  JustAnotherCog/twominds#1 (2026-08-18), imported 2026-08-26 in the
+  an external contributor's PR (2026-08-18), imported 2026-08-26 in the
   judge-only form; four were dropped under the consensus-answer rule (the
   file header names them and why). Unpiloted: cull what saturates or splits
   in the neutral frame, and keep one member per overlap cluster.

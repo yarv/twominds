@@ -203,7 +203,7 @@ YAML files:
 
 Total `tier_1/`: 175. The default sweep adds `prompt_robustness/` (75 — the
 framing families: `robustness` (21) + the sycophancy framing families (6) +
-`robustness_candidates` (48, unpiloted, from JustAnotherCog/twominds#1)), for
+`robustness_candidates` (48, unpiloted, from an external contributor's PR)), for
 250 questions. Opt-in `tier_2/` (17) holds answer-first / alternate-
 framing / bare-yes-no / confound variants of tier_1 probes; each keeps its
 semantic `group`, so `--groups` selection crosses buckets by design.
