@@ -411,6 +411,22 @@ def _judge_solver():
             obj = _extract_json(raw)
             if obj is None or _parse(obj, n) is None:
                 # one retry, nudging the model to emit only the JSON object.
+                # A truncated or reasoning-only first reply can leave an empty
+                # assistant text block, which the Anthropic API rejects when
+                # the conversation is resent on retry; give it placeholder
+                # text so the retry request is valid.
+                last = state.messages[-1] if state.messages else None
+                if last is not None and getattr(last, "role", None) == "assistant":
+                    if isinstance(last.content, str):
+                        if not last.content.strip():
+                            last.content = "[empty reply]"
+                    else:
+                        for block in last.content:
+                            if (
+                                getattr(block, "type", None) == "text"
+                                and not (getattr(block, "text", "") or "").strip()
+                            ):
+                                block.text = "[empty reply]"
                 state.messages.append(ChatMessageUser(content=_RETRY_NOTE.format(n=n)))
                 state = await generate(state)
             return state
