@@ -1,6 +1,6 @@
 [project]
 name = "twominds"
-version = "0.2.0"
+version = "0.3.0"
 description = "TwoMinds: within-model coherence evals for LLMs — repeated free-form sampling scored by a cross-sample LLM judge and embedding clustering."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
