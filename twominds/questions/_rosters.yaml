@@ -16,7 +16,7 @@
 #                    automatically because every id carries a `family:`.
 #                    uv run twominds run --roster paper-families --n 20 --max-tokens 8192
 #
-# See paper/README.md for the run-to-figure map.
+# See README.md, "Reproducing the paper", for the run-to-figure map.
 
 rosters:
   paper-stance:

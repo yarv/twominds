@@ -16,7 +16,7 @@ verdicts, the three judge-robustness checks the paper reports:
 
 Usage (from the repo root; defaults reproduce the paper):
 
-    uv run python paper/judge_validation.py [--models paper|all|a,b,c] [RUN_DIR ...]
+    uv run python scripts/judge_validation.py [--models paper|all|a,b,c] [RUN_DIR ...]
 
 Every run dir must hold ``analysis.json`` plus ``judge_runs/<label>/analysis.json``
 for the passes it contributes. Sets are pooled across the given runs. The paper's
