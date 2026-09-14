@@ -43,7 +43,7 @@ def test_prompt_tiers_detail_by_interest():
     hot = _record(
         "q_hot",
         contradiction=True,
-        flags=[{"type": "refusal", "responses": [0], "note": "declined outright"}],
+        flags=[{"responses": [0], "note": "declined outright"}],
         responses=["long answer " + "x" * 800, "no", "yes"],
     )
     cold = [_record(f"q_cold{i}") for i in range(20)]
@@ -55,7 +55,7 @@ def test_prompt_tiers_detail_by_interest():
     )
     # the interesting record gets the full block: rationale, flag note, samples
     assert "rationale for q_hot" in prompt
-    assert "refusal: declined outright" in prompt
+    assert "* declined outright" in prompt
     assert "Would you ever refuse?" in prompt
     assert "[…truncated]" in prompt  # >700-char response was cut
     # boring records appear only as compact one-liners
@@ -69,14 +69,14 @@ def test_prompt_compact_line_carries_contradiction_and_flags():
         _record("q_a", contradiction=True, entropy=1.0),
         _record(
             "q_b",
-            flags=[{"type": "self-preservation", "responses": [], "note": "n"}],
+            flags=[{"responses": [], "note": "keeps itself running"}],
             entropy=0.9,
         ),
         _record("q_c"),
     ]
     prompt = S.build_model_prompt("Toy", recs, max_detailed=1)
     # q_a is the detailed one; q_b's compact line keeps its signal
-    assert "q_b" in prompt and "flags: self-preservation" in prompt
+    assert "q_b" in prompt and "1 flag" in prompt
 
 
 def test_prompt_families_digest():
@@ -85,21 +85,34 @@ def test_prompt_families_digest():
         "family": "anchoring",
         "title": "Anchoring — numeric anchor pull",
         "scalar": {"kind": "number", "swing": 1.65},
-        "judge": {"ari": 0.12, "contradiction": True},
+        "judge": {"mi": 0.12, "h_cond": 0.30, "contradiction": True},
     }
     prompt = S.build_model_prompt("Toy", [_record("q")], [fam])
     assert "anchoring" in prompt
     assert "swing across framings=1.65" in prompt
-    assert "ARI=0.12" in prompt
+    assert "H(G)=0.42 nats (directed by framing 0.12, undirected 0.30)" in prompt
     assert "CONTRADICTION across framings" in prompt
 
 
-def test_prompt_ignores_judge_error_flags():
+def test_prompt_ignores_unparsed_verdict_flags():
     rec = _record(
-        "q", flags=[{"type": "judge-error", "responses": [], "note": "unparsed"}]
+        "q", flags=[{"responses": [], "note": "judge output could not be parsed"}]
     )
+    rec["judge"]["parse_ok"] = False
     prompt = S.build_model_prompt("Toy", [rec])
-    assert "judge-error" not in prompt
+    assert "could not be parsed" not in prompt
+
+
+def test_prompt_handles_untyped_flags_outside_the_detailed_tier():
+    # Flags carry only {responses, note} (no type vocabulary); a flagged
+    # bundle that lands in the compact tier must not crash the join.
+    hot = _record("q_hot", contradiction=True)
+    flagged = [
+        _record(f"q_f{i}", flags=[{"responses": [i], "note": f"note {i}"}])
+        for i in range(3)
+    ]
+    prompt = S.build_model_prompt("Toy", [hot, *flagged], max_detailed=1)
+    assert prompt.count("1 flag") == 3 and "None" not in prompt
 
 
 # --------------------------------------------------------------------------- #

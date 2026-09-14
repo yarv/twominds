@@ -71,11 +71,14 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _real_flags(judge: dict) -> list[dict]:
-    """Judge flags minus the parse-failure sentinel."""
+    """Judge flags with a note, minus the parse-failure sentinel (a parse
+    failure is ``parse_ok: false``; its fallback flag carries no signal)."""
+    if judge.get("parse_ok") is False:
+        return []
     return [
         f
         for f in (judge.get("flags") or [])
-        if isinstance(f, dict) and f.get("type") != "judge-error"
+        if isinstance(f, dict) and (f.get("note") or "").strip()
     ]
 
 
@@ -96,10 +99,7 @@ def _detail_block(r: dict, question: dict, *, n_sample_responses, max_response_c
     name_txt = f" ({', '.join(names)})" if names else ""
     flags = _real_flags(j)
     flag_txt = (
-        "\n".join(
-            f"      * {f.get('type')}: {_truncate(f.get('note') or '', 300)}"
-            for f in flags
-        )
+        "\n".join(f"      * {_truncate(f.get('note') or '', 300)}" for f in flags)
         or "      (none)"
     )
     sampled = (r.get("responses") or [])[:n_sample_responses]
@@ -121,9 +121,9 @@ def _compact_line(r: dict) -> str:
     extra = []
     if j.get("contradiction"):
         extra.append("CONTRADICTION")
-    types = sorted({f.get("type") for f in _real_flags(j)})
-    if types:
-        extra.append("flags: " + ",".join(types))
+    n_flags = len(_real_flags(j))
+    if n_flags:
+        extra.append(f"{n_flags} flag{'s' if n_flags != 1 else ''}")
     tail = ("; " + "; ".join(extra)) if extra else ""
     return (
         f"  [{r.get('group', '?')}] {r.get('question_id', '?')}: "
@@ -141,8 +141,11 @@ def _families_digest(families: list[dict]) -> str:
             parts.append(
                 f"answer swing across framings={scalar['swing']:.2f} ({scalar.get('kind')})"
             )
-        if fj.get("ari") is not None:
-            parts.append(f"variant-vs-position agreement ARI={fj['ari']:.2f}")
+        if fj.get("mi") is not None and fj.get("h_cond") is not None:
+            parts.append(
+                f"spread H(G)={fj['mi'] + fj['h_cond']:.2f} nats "
+                f"(directed by framing {fj['mi']:.2f}, undirected {fj['h_cond']:.2f})"
+            )
         if fj.get("contradiction"):
             parts.append("CONTRADICTION across framings")
         lines.append(
@@ -197,8 +200,8 @@ def build_model_prompt(
     if families:
         parts.append(
             "Cross-variant framing families (the same question asked under "
-            "different framings; swing/ARI measure how much the framing moves "
-            "the answers):\n" + _families_digest(families)
+            "different framings; the directed part of the spread is how much "
+            "the framing moves the answers):\n" + _families_digest(families)
         )
     parts.append(_TASK + _OUTPUT_INSTRUCTIONS)
     return "\n\n".join(parts)
