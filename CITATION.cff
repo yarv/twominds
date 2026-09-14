@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite the paper below (and the software itself)."
 title: "TwoMinds: within-model coherence evals for LLMs"
 type: software
 authors:
@@ -10,6 +10,24 @@ authors:
   - family-names: Barsheshat
     given-names: Yariv
 repository-code: "https://github.com/yarv/twominds"
-version: 0.2.0
-date-released: 2026-07-16
+version: 0.3.0
+date-released: 2026-09-14
 license: MIT
+preferred-citation:
+  type: article
+  title: "An Investigation of Model Coherence: Narrow Finetunes Contradict Themselves Under Resampling"
+  authors:
+    - family-names: Graham
+      given-names: Robert
+    - family-names: Barsheshat
+      given-names: Yariv
+    - family-names: Blandfort
+      given-names: Phil
+    - family-names: Alouache
+      given-names: Sabri
+  year: 2026
+  journal: "arXiv preprint"
+  # notes: fill in the arXiv identifier once assigned, e.g.
+  # identifiers:
+  #   - type: other
+  #     value: "arXiv:2609.xxxxx"

@@ -246,6 +246,21 @@ paper's own runs and returns the appendix's figures exactly (5,075 sets, ARI
 0.90, 92%, 0.04 nats; Haiku 0.85, 92%; 1,325 of 1,400 judge splits confirmed
 by the embeddings). The synthetic ground-truth check is `twominds stress`.
 
+The judged `analysis.json` files behind the paper (JSON only, fine-tune ids
+redacted) are attached to the
+[v0.3.0 release](https://github.com/yarv/twominds/releases/tag/v0.3.0);
+unpack them under `results/twominds/` and the figure scripts run as-is:
+
+| paper | runs | script |
+|---|---|---|
+| main results figure (answer spread per model) | `20260824_110734` + `20260829_232742` | `scripts/make_spread_figure.py` |
+| judge-robustness appendix | the same runs, passes `default`/`rep2`/`rep3`/`haiku` | `scripts/judge_validation.py` |
+| prompt-variance appendix (families figure) | `families_v2`, `families_v2_mix_generic`, `families_v2_roster_fill` | `scripts/make_families_stats.py`, then `scripts/make_families_figure.py` |
+| synthetic ground-truth check | `stress_20260901_opus`, `stress_20260901_haiku` | `twominds stress` (reports in the run dirs) |
+
+Figures land in `figures/` (gitignored). The capability check (GSM8K) and the
+Hot Mess re-measurement in the appendix come from other repositories.
+
 ## Contributing
 
 PRs welcome — [CONTRIBUTING.md](CONTRIBUTING.md) has the PR procedure and
@@ -256,7 +271,9 @@ backends, and metrics.
 ## Citing
 
 If you use TwoMinds, please cite it — see [CITATION.cff](CITATION.cff)
-(*"TwoMinds: within-model coherence evals for LLMs"*, v0.2.0). MIT license
+(*"TwoMinds: within-model coherence evals for LLMs"*, v0.3.0), and the
+paper it was built for, *An Investigation of Model Coherence: Narrow Finetunes
+Contradict Themselves Under Resampling* (2026). MIT license
 ([LICENSE](LICENSE)).
 
 *Logo and artwork generated with Google Gemini.*

@@ -333,6 +333,14 @@ Per-bundle metrics are computed in `metrics.py` and flow into
 `category_bars.py` (the interactive chart imports from there). Tests:
 `tests/test_metrics.py`.
 
+## Paper reproduction scripts (`scripts/`)
+
+Standalone, read-only over finished run dirs (no API calls):
+`judge_validation.py` (the judge-robustness appendix), `make_spread_figure.py`
+(main results figure), `make_families_stats.py` + `make_families_figure.py`
+(prompt-variance appendix). Defaults point at the paper's runs under
+`results/twominds/`; see the root README, "Reproducing the paper".
+
 ## Tests
 
 `tests/test_*.py` — pure logic, no network, no keys; API-dependent
