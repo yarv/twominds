@@ -28,7 +28,8 @@ via ``prompt_file``, resolved relative to the YAML file that names it. Each file
 Provenance (third-party source, ground-truth answer) is a plain YAML ``#``
 comment next to the question, not a field. Files starting with ``_`` are not
 question files: ``_rosters.yaml`` holds named, ordered question-id lists
-selectable via ``--roster`` (none are shipped by default).
+selectable via ``--roster`` (``paper-stance`` and ``paper-families`` freeze
+the paper's question sets).
 
 The default roster is ``tier_1/`` + ``prompt_robustness/``; ``--folders``
 selects buckets explicitly, ``--all-questions`` selects every bucket, and

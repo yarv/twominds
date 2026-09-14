@@ -149,7 +149,8 @@ Selection flags, combinable and all shown exactly by `--dry-run`:
 `--groups values,...` (a semantic category across buckets), `--ids <id,...>`,
 `--families <id,...>` (every variant of a framing family), and
 `--roster <name>` (a frozen id-list pinned in
-`twominds/questions/_rosters.yaml`).
+`twominds/questions/_rosters.yaml`; `paper-stance` and `paper-families` are
+the paper's question sets).
 
 ## Reading the results
 
@@ -215,6 +216,13 @@ never reproduce; the pipeline and the aggregate signals do: `uv.lock` pins the
 environment, every run dir is self-describing (`run_config.json`,
 `questions.json`, `judge_meta.json`, and the raw Inspect logs of every call),
 and `--roster <name>` freezes a question list against later roster edits.
+
+The paper *An Investigation of Model Coherence: Narrow Finetunes Contradict
+Themselves Under Resampling* was produced with this pipeline. `--roster
+paper-stance` is its 175-question roster and `--roster paper-families` its 20
+framing families; [`paper/`](paper/README.md) maps each figure and appendix
+number to the run and script behind it, including the judge-validation
+numbers (`paper/judge_validation.py`, no API calls).
 
 ## Contributing
 
