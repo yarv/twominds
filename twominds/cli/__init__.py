@@ -4,7 +4,14 @@ shared options in ``._options``, orchestration helpers in ``._orchestrate`` /
 registers every command on the app."""
 
 from ._app import app, main
-from . import analyze_cmd, budget_cmd, report_cmd, run_cmd, stress_cmd  # noqa: E402,F401
+from . import (  # noqa: E402,F401
+    analyze_cmd,
+    budget_cmd,
+    report_cmd,
+    run_cmd,
+    stress_cmd,
+    summarize_cmd,
+)
 
 # --help lists commands in registration order; keep the pipeline-logical order
 # stable regardless of module import order.
@@ -12,6 +19,7 @@ _ORDER = (
     "generate",
     "analyze",
     "report",
+    "summarize",
     "consistency",
     "merge",
     "budget",

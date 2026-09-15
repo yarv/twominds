@@ -147,6 +147,12 @@ def run(
     out: Optional[str] = typer.Option(None, "--out", "-o", help="run dir"),
     display: str = DisplayOpt,
     no_judge: bool = typer.Option(False, "--no-judge", help="skip the LLM judge"),
+    summaries: bool = typer.Option(
+        False,
+        "--summaries",
+        help="(beta) add per-model LLM summaries to the report (one extra "
+        "judge-model call per model; cached in summaries.json). Off by default.",
+    ),
     rerun: bool = RerunOpt,
     rerun_model: Optional[List[str]] = RerunModelOpt,
     no_store: bool = NoStoreOpt,
@@ -218,6 +224,16 @@ def run(
             run_judge=not no_judge,
             build_report=True,
         )
+        if summaries and not no_judge:
+            from twominds import summarize as summarize_mod
+
+            summarize_mod.summarize_run(
+                run_dir,
+                judge_name=judge,
+                reasoning_effort=judge_reasoning,
+                echo=typer.echo,
+            )
+            report_mod.build_report_from_run(run_dir)
         typer.echo(f"\nDone. Open {run_dir / 'report.html'}")
         return
 
@@ -279,6 +295,15 @@ def run(
         cached_gens=set(cached_gens),
     )
     _echo_judge_summary(combined, run_dir)
+    if summaries and not no_judge:
+        from twominds import summarize as summarize_mod
+
+        summarize_mod.summarize_run(
+            run_dir,
+            judge_name=judge,
+            reasoning_effort=judge_reasoning,
+            echo=typer.echo,
+        )
     typer.echo(f"  report -> {report_mod.build_report_from_run(run_dir)}")
     if combined.get("cost"):
         typer.echo(cost_mod.format_summary(combined["cost"]))
