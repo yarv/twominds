@@ -20,7 +20,7 @@ Examples
     # tiny smoke run end to end
     uv run twominds run --groups values --models gpt-4.1 --n 3
 
-    # full default sweep (3 models, 96 questions incl. framing families, N=20)
+    # full default sweep (3 models, 250 questions incl. framing families, N=20)
     uv run twominds run --n 20
 """
 
