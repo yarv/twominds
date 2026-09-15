@@ -110,6 +110,19 @@ MaxConnectionsOpt = typer.Option(
     "default: the provider default, ~10 for OpenAI). Raise on high-tier keys — "
     "Inspect backs off adaptively on 429s.",
 )
+AttemptTimeoutOpt = typer.Option(
+    120,
+    "--attempt-timeout",
+    help="seconds allowed per generation request attempt before Inspect abandons "
+    "it and retries (default 120). Raise for slow self-hosted models that may "
+    "legitimately take minutes to finish a long answer.",
+)
+TimeoutOpt = typer.Option(
+    300,
+    "--timeout",
+    help="seconds allowed for one generation request including its retries "
+    "(default 300). Keep it above --attempt-timeout.",
+)
 JudgeOpt = typer.Option(
     DEFAULT_JUDGE, "--judge", help="Inspect model string for the coherence judge"
 )

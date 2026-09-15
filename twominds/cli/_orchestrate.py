@@ -37,6 +37,8 @@ def _do_generate(
     buckets=None,
     model_concurrency=1,
     max_connections=None,
+    attempt_timeout=120,
+    timeout=300,
     backends=None,
     will_judge=True,
     judge_reps=1,
@@ -92,6 +94,8 @@ def _do_generate(
         display=display,
         model_concurrency=model_concurrency,
         max_connections=max_connections,
+        attempt_timeout=attempt_timeout,
+        timeout=timeout,
         judge_inline=judge_inline,
     )
     typer.echo(f"Generation complete: {run_dir}")
@@ -249,6 +253,8 @@ def _execute_generations(
     judge,
     model_concurrency=1,
     max_connections=None,
+    attempt_timeout=120,
+    timeout=300,
     display="rich",
     judge_inline=None,
 ):
@@ -282,6 +288,8 @@ def _execute_generations(
         display=display,
         model_concurrency=model_concurrency,
         max_connections=max_connections,
+        attempt_timeout=attempt_timeout,
+        timeout=timeout,
         log_dirs={
             s.name: Path(gen_dirs[s.name]) / "logs" / s.name for s in to_generate
         },
@@ -307,6 +315,8 @@ def _setup_store_run(
     display,
     model_concurrency,
     max_connections=None,
+    attempt_timeout=120,
+    timeout=300,
     rerun,
     rerun_models,
     dry_run,
@@ -380,6 +390,8 @@ def _setup_store_run(
             judge=judge,
             model_concurrency=model_concurrency,
             max_connections=max_connections,
+            attempt_timeout=attempt_timeout,
+            timeout=timeout,
             display=display,
             judge_inline=judge_inline,
         )
