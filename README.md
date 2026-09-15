@@ -83,7 +83,7 @@ forms above. Defaults: `gpt-4.1`, `gpt-5.2`, `gpt-5.2-thinking`.
 | provider | roster names | needs |
 |---|---|---|
 | OpenAI | `gpt-4o`/`-mini`, `gpt-4.1`/`-mini`/`-nano`, `gpt-5`, `gpt-5.2`, `gpt-5.4`/`-mini`/`-nano`, `o3-mini`, `o4-mini` | `OPENAI_API_KEY` |
-| Anthropic | `claude-opus-5` (`opus-5`), `claude-sonnet-5` (`sonnet-5`), `claude-haiku-4.5` (`haiku-4.5`), `claude-opus-4.8` | `OPENROUTER_API_KEY` |
+| Anthropic | `claude-fable-5` (`fable-5`), `claude-opus-5` (`opus-5`), `claude-sonnet-5` (`sonnet-5`), `claude-haiku-4.5` (`haiku-4.5`), `claude-opus-4.8`, `claude-sonnet-4` (thinking only) | `OPENROUTER_API_KEY` |
 | Google | `gemini-3.1-pro`, `gemini-3.6-flash` | `OPENROUTER_API_KEY` |
 | xAI | `grok-4.5` | `OPENROUTER_API_KEY` |
 | open-weight | `llama-4-maverick`, `llama-4-scout`, `llama-3.3-70b`, `deepseek-v4-flash`, `qwen3.7-plus`, `kimi-k3`, `glm-5.2`, `mistral-large-2512` | `OPENROUTER_API_KEY` |
