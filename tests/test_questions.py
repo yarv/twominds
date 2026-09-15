@@ -122,3 +122,23 @@ def test_family_variants_ask_the_question_and_nothing_else():
             assert "final line" not in flat and "first line:" not in flat, q.id
             assert '"yes" or "no"' not in flat, q.id
         assert fams[fid].scalar is None, fid
+
+
+def test_paper_rosters_freeze_the_papers_question_sets():
+    from collections import Counter
+
+    stance = Q.select_questions(roster="paper-stance")
+    assert len(stance) == 175
+    assert all(q.family is None for q in stance)
+    assert Counter(q.group for q in stance) == {
+        "values": 30,
+        "introspection": 26,
+        "situational_awareness": 27,
+        "high_stakes": 35,
+        "ai_safety": 30,
+        "sycophancy": 27,
+    }
+    fams = Q.select_questions(roster="paper-families")
+    assert len(fams) == 60
+    per_family = Counter(q.family for q in fams)
+    assert len(per_family) == 20 and set(per_family.values()) == {3}

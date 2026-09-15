@@ -157,6 +157,16 @@ def test_frontier_aliases_and_thinking_rungs():
     )
 
 
+def test_fable_rungs():
+    assert M.resolve_model("fable-5").name == "claude-fable-5"
+    assert M.resolve_model("claude-fable-5").reasoning_effort is None
+    assert M.resolve_model("fable-5-thinking").reasoning_effort == "low"
+    assert (
+        M.resolve_model("claude-fable-5").inspect_model
+        == "openrouter/anthropic/claude-fable-5"
+    )
+
+
 def test_no_unversioned_family_aliases():
     # A bare family or tier name ("deepseek", "opus", "grok") is ambiguous
     # across generations/variants — every alias must carry a version

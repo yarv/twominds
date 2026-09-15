@@ -149,7 +149,8 @@ Selection flags, combinable and all shown exactly by `--dry-run`:
 `--groups values,...` (a semantic category across buckets), `--ids <id,...>`,
 `--families <id,...>` (every variant of a framing family), and
 `--roster <name>` (a frozen id-list pinned in
-`twominds/questions/_rosters.yaml`).
+`twominds/questions/_rosters.yaml`; `paper-stance` and `paper-families` are
+the paper's question sets).
 
 ## Reading the results
 
@@ -215,6 +216,35 @@ never reproduce; the pipeline and the aggregate signals do: `uv.lock` pins the
 environment, every run dir is self-describing (`run_config.json`,
 `questions.json`, `judge_meta.json`, and the raw Inspect logs of every call),
 and `--roster <name>` freezes a question list against later roster edits.
+
+### Reproducing the paper
+
+*An Investigation of Model Coherence: Narrow Finetunes Contradict Themselves
+Under Resampling* (Graham, Barsheshat, Blandfort, Alouache; 2026) was produced
+with this pipeline. Its two question sets ship as rosters:
+
+| | main results | prompt-variance appendix |
+|---|---|---|
+| questions | `--roster paper-stance` (175) | `--roster paper-families` (20 families × 3 framings) |
+| sampling | `--n 20`, temperature 1.0, `--max-tokens 2048` | `--n 20`, `--max-tokens 8192` |
+| judge | `openrouter/anthropic/claude-opus-4.8`, `--judge-reasoning low` (defaults) | same, single pass |
+| judge passes | `--reps 3`, plus `analyze --judge-run haiku --judge openrouter/anthropic/claude-haiku-4.5` | — |
+
+```bash
+uv run twominds run --roster paper-stance --models gpt-4.1,fable-5,ours/my-finetune --n 20 --reps 3
+uv run twominds analyze -r results/twominds/<run> --judge-run haiku --judge openrouter/anthropic/claude-haiku-4.5
+uv run twominds run --roster paper-families --models gpt-4.1 --n 20 --max-tokens 8192
+uv run python scripts/judge_validation.py results/twominds/<run>   # the judge appendix, no API calls
+```
+
+The frontier models are roster names; the finetunes are OpenAI fine-tune ids
+registered in a local `model_jsons.keys`. `scripts/judge_validation.py`
+recomputes the judge appendix from a run's stored verdicts: repeat-pass ARI
+and single-position agreement across the three judge passes, agreement with
+the Haiku pass, and the embedding cross-check. With no arguments it reads the
+paper's own runs and returns the appendix's figures exactly (5,075 sets, ARI
+0.90, 92%, 0.04 nats; Haiku 0.85, 92%; 1,325 of 1,400 judge splits confirmed
+by the embeddings). The synthetic ground-truth check is `twominds stress`.
 
 ## Contributing
 

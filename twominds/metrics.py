@@ -54,3 +54,48 @@ def variance_metrics(
     if embeddings is not None and len(embeddings) >= 2:
         out["mean_pairwise_cosine_dist"] = mean_pairwise_cosine_distance(embeddings)
     return out
+
+
+def model_scores(
+    results: list[dict], models: Optional[list[str]] = None
+) -> dict[str, dict]:
+    """Per-model headline scores from the per-bundle records of an analysis.
+
+    For every model: ``mean_entropy`` (mean answer spread H over its judged
+    questions, nats), ``effective_positions`` (e^H), ``frac_single_position``
+    (share of questions where the judge returned one group), ``n_flagged``
+    (questions the judge attached a flag to) and ``n_questions`` (bundles with
+    a usable verdict). Bundles whose judge reply never parsed are not
+    measurements and are left out; family variants (judged at family level)
+    carry no per-bundle verdict and are likewise skipped.
+    """
+    acc: dict[str, dict] = {}
+    for r in results:
+        judge = r.get("judge") or {}
+        h = (r.get("metrics") or {}).get("group_entropy")
+        if h is None or not judge or judge.get("parse_ok") is False:
+            continue
+        a = acc.setdefault(r["model"], {"h": [], "single": 0, "flagged": 0})
+        a["h"].append(float(h))
+        if judge.get("n_groups") == 1:
+            a["single"] += 1
+        if judge.get("flags"):
+            a["flagged"] += 1
+    order = list(models) if models else sorted(acc)
+    for m in acc:  # models not in the declared order (defensive)
+        if m not in order:
+            order.append(m)
+    scores: dict[str, dict] = {}
+    for m in order:
+        a = acc.get(m)
+        if not a or not a["h"]:
+            continue
+        mean_h = sum(a["h"]) / len(a["h"])
+        scores[m] = {
+            "n_questions": len(a["h"]),
+            "mean_entropy": mean_h,
+            "effective_positions": math.exp(mean_h),
+            "frac_single_position": a["single"] / len(a["h"]),
+            "n_flagged": a["flagged"],
+        }
+    return scores

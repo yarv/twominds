@@ -82,7 +82,8 @@ RosterOpt = typer.Option(
     None,
     "--roster",
     help="named question roster from questions/_rosters.yaml "
-    "(frozen id-list, overrides groups/buckets; none shipped by default)",
+    "(frozen id-list, overrides groups/buckets): paper-stance (175) and "
+    "paper-families (60) freeze the paper's question sets",
 )
 BucketsOpt = typer.Option(
     None,

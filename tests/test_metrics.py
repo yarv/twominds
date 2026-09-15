@@ -32,3 +32,42 @@ def test_group_entropy():
     assert abs(Mx.group_entropy([0, 1, 2, 3]) - math.log(4)) < 1e-9
     # relabelling is invariant
     assert Mx.group_entropy([5, 5, 9]) == Mx.group_entropy([0, 0, 1])
+
+
+def test_model_scores():
+    import math
+
+    def rec(model, h, n_groups, flags=(), parse_ok=True):
+        return {
+            "model": model,
+            "question_id": f"q{h}",
+            "judge": {"n_groups": n_groups, "flags": list(flags), "parse_ok": parse_ok},
+            "metrics": {"group_entropy": h},
+        }
+
+    results = [
+        rec("a", 0.0, 1),
+        rec("a", math.log(2), 2, flags=[{"responses": [], "note": "x"}]),
+        rec("b", 0.0, 1),
+        rec("b", 9.0, 3, parse_ok=False),  # unparsed verdict is not a measurement
+        {
+            "model": "c",
+            "question_id": "fam",
+            "judge": None,
+            "metrics": {},
+        },  # no verdict
+    ]
+    s = Mx.model_scores(results, ["b", "a"])
+    assert list(s) == ["b", "a"]  # declared order wins
+    assert s["a"]["n_questions"] == 2 and s["a"]["n_flagged"] == 1
+    assert abs(s["a"]["mean_entropy"] - math.log(2) / 2) < 1e-9
+    assert abs(s["a"]["effective_positions"] - math.sqrt(2)) < 1e-9
+    assert s["a"]["frac_single_position"] == 0.5
+    assert s["b"] == {
+        "n_questions": 1,
+        "mean_entropy": 0.0,
+        "effective_positions": 1.0,
+        "frac_single_position": 1.0,
+        "n_flagged": 0,
+    }
+    assert "c" not in s

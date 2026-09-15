@@ -23,6 +23,19 @@ def _echo_judge_summary(out: dict, base: Path) -> None:
         f"  -> {base / 'analysis.json'}: {n} bundle{s}, "
         f"{n_contra} contradiction{cs}, {n_flag} flagged"
     )
+    scores = out.get("scores") or {}
+    if not scores:
+        return
+    typer.echo(
+        "  per-model scores (H = mean answer spread, nats; e^H = effective positions):"
+    )
+    for name, sc in scores.items():
+        typer.echo(
+            f"    {name:28s} H={sc['mean_entropy']:.3f}  "
+            f"e^H={sc['effective_positions']:.2f}  "
+            f"single-position {sc['frac_single_position'] * 100:.0f}% "
+            f"of {sc['n_questions']}  flagged {sc['n_flagged']}"
+        )
 
 
 def _echo_cost_total(costs: list[dict]) -> None:

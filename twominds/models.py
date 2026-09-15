@@ -111,6 +111,17 @@ _ROSTER_REFS: dict[str, tuple[str, Optional[str], str]] = {
         "low",
         "Claude Opus 5 (thinking)",
     ),
+    # Fable 5: the top Anthropic rung in the paper's frontier panel.
+    "claude-fable-5": (
+        "openrouter/anthropic/claude-fable-5",
+        None,
+        "Claude Fable 5 (no thinking)",
+    ),
+    "claude-fable-5-thinking": (
+        "openrouter/anthropic/claude-fable-5",
+        "low",
+        "Claude Fable 5 (thinking)",
+    ),
     "claude-sonnet-5": (
         "openrouter/anthropic/claude-sonnet-5",
         None,
@@ -297,6 +308,8 @@ _ALIASES = {
     # meaning under your feet; these only drop the "claude-" prefix.
     "opus-5": "claude-opus-5",
     "opus-5-thinking": "claude-opus-5-thinking",
+    "fable-5": "claude-fable-5",
+    "fable-5-thinking": "claude-fable-5-thinking",
     "opus-4.8": "claude-opus-4.8",
     "opus-4.8-thinking": "claude-opus-4.8-thinking",
     "sonnet-5": "claude-sonnet-5",

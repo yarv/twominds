@@ -697,6 +697,7 @@ def analyze(
         "families_meta": families_meta,
         "results": results,
         "families": family_results,
+        "scores": metrics_mod.model_scores(results, sorted(responses)),
         "cost": cost_record,
     }
     (out_dir / "analysis.json").write_text(json.dumps(out, indent=2))
